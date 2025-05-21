@@ -1,0 +1,5 @@
+CompileFlags:
+  CompilationDatabase: build
+  Compiler: arm-none-eabi
+  Remove: [-mcpu=*]
+  Add: [-include-system=/usr/arm-none-eabi/include]
