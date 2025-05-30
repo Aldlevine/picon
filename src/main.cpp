@@ -141,7 +141,7 @@ int main()
     printf("Flash Binary Start: 0x%x\n", flash_binary_start);
     printf("Flash Binary End: 0x%x\n", flash_binary_end);
 
-    display.init(spi0);
+    display.init(pio0);
 
     pg::DeltaTimer display_timer{1'000'000 / 120};
 

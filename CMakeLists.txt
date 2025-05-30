@@ -13,6 +13,8 @@ add_subdirectory(assets)
 
 pico_sdk_init()
 
+# Main executable {{{
+
 add_executable(${PROJECT_NAME}
         src/main.cpp
 )
@@ -25,14 +27,17 @@ set_target_properties(pico_game PROPERTIES
         C_STANDARD 11
         CXX_STANDARD 20)
 
-target_link_libraries(pico_game
-        pico_stdlib
+target_link_libraries(pico_game PRIVATE
         hardware_dma
         hardware_flash
+        hardware_pio
         hardware_spi
+        pico_stdlib
         image_data)
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 pico_set_program_version(${PROJECT_NAME} "0.1")
 
 pico_add_extra_outputs(pico_game)
+
+# }}} Main Executable

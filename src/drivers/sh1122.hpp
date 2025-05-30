@@ -2,12 +2,20 @@
 
 #include "graphics/graphics.hpp"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <hardware/dma.h>
+#include <hardware/gpio.h>
+#include <hardware/pio.h>
+#include <hardware/pio_instructions.h>
 #include <hardware/spi.h>
+#include <hardware/structs/io_bank0.h>
+#include <pico.h>
+#include <pico/platform/common.h>
 #include <pico/time.h>
 
 #include <array>
-#include <limits>
 
 namespace pg
 {
@@ -57,47 +65,102 @@ namespace pg
         static constexpr auto cs = t_cs;
         static constexpr auto rst = t_rst;
 
-
     public:
         using FrameBuffer = Image<ImageFormat::GS4_HMSB, width, height>;
 
-        spi_inst_t *spi;
-
     private:
-        std::array<FrameBuffer, 2> frame_buffers;
-        std::size_t front_buffer_idx = 0;
-        std::uint8_t dma_channel = 0;
-        dma_channel_config dma_config;
+        std::array<FrameBuffer, 2> frame_buffers{};
+        std::size_t front_buffer_idx{};
+
+        std::uint8_t dma_channel{};
+        dma_channel_config dma_config{};
+
+        PIO pio{};
+        uint pio_sm{};
+        uint pio_offset{};
 
     public:
-        void init(spi_inst_t* p_spi)
+        void init(PIO p_pio)
         {
-            spi = p_spi;
+            initSpiPio(p_pio);
+            initDma();
+            initGpio();
+            initDisplay();
+        }
 
-            const auto bd = spi_init(spi, std::numeric_limits<uint>::max());
-            spi_set_baudrate(spi, bd / 2);
-            // spi_set_baudrate(spi, bd / 4);
+        FrameBuffer &getFrontBuffer()
+        {
+            return frame_buffers[front_buffer_idx];
+        }
 
-            spi_set_format(spi, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+        FrameBuffer &getBackBuffer()
+        {
+            return frame_buffers[(front_buffer_idx + 1) % frame_buffers.size()];
+        }
 
-            dma_channel = dma_claim_unused_channel(true);
-            dma_config = dma_channel_get_default_config(dma_channel);
-            channel_config_set_transfer_data_size(&dma_config, DMA_SIZE_8);
-            channel_config_set_high_priority(&dma_config, true);
-            channel_config_set_dreq(&dma_config, spi_get_dreq(spi, true));
+        void swapBuffers()
+        {
+            if (dma_channel_is_busy(dma_channel))
+            {
+                dma_channel_wait_for_finish_blocking(dma_channel);
+            }
 
-            gpio_init(dc);
-            gpio_init(cs);
-            gpio_init(rst);
-            gpio_set_dir(dc, GPIO_OUT);
-            gpio_set_dir(cs, GPIO_OUT);
-            gpio_set_dir(rst, GPIO_OUT);
+            deselectDevice();
+            selectDevice();
+            
+            setCmdMode();
+            writeCmd(0xB0, 0x00); // reset row 0
+            writeCmd(0x00, 0x10); // reset to column 0
+            setDataMode();
 
-            gpio_set_function(sck, GPIO_FUNC_SPI);
-            gpio_set_function(mosi, GPIO_FUNC_SPI);
+            const auto &back_buffer = getBackBuffer().getBuffer();
+            pioSpiWrite(back_buffer.data(), back_buffer.size());
 
-            gpio_put(rst, 1);
+            front_buffer_idx = (front_buffer_idx + 1) % frame_buffers.size();
+        }
 
+    private:
+        void selectDevice()
+        {
+            gpio_put(cs, 0);
+        }
+
+        void deselectDevice()
+        {
+            gpio_put(cs, 1);
+        }
+
+        void setCmdMode()
+        {
+            pio_sm_set_enabled(pio, pio_sm, false);
+            pio_sm_set_wrap(pio, pio_sm, pio_offset + 0, pio_offset + 3);
+            pio->sm[pio_sm].instr = pio_offset + 0;
+            pio_sm_set_enabled(pio, pio_sm, true);
+            gpio_put(dc, 0);
+        }
+
+        void setDataMode()
+        {
+            pio_sm_set_enabled(pio, pio_sm, false);
+            pio_sm_set_wrap(pio, pio_sm, pio_offset + 4, pio_offset + 5);
+            pio->sm[pio_sm].instr = pio_offset + 4;
+            pio_sm_set_enabled(pio, pio_sm, true);
+            gpio_put(dc, 1);
+        }
+
+        void writeCmd(std::uint8_t p_cmd)
+        {
+            pioSpiWriteBlocking(&p_cmd, 1);
+        }
+
+        void writeCmd(std::uint8_t p_cmd, std::uint8_t p_value)
+        {
+            writeCmd(p_cmd);
+            writeCmd(p_value);
+        }
+
+        void initDisplay()
+        {
             selectDevice();
             setCmdMode();
             writeCmd(+SH1122Commands::display_off);
@@ -128,81 +191,118 @@ namespace pg
             deselectDevice();
         }
 
-        FrameBuffer &getFrontBuffer()
+        void initGpio()
         {
-            return frame_buffers[front_buffer_idx];
+            gpio_init(dc);
+            gpio_init(cs);
+            gpio_init(rst);
+            gpio_set_dir(dc, GPIO_OUT);
+            gpio_set_dir(cs, GPIO_OUT);
+            gpio_set_dir(rst, GPIO_OUT);
+            gpio_put(rst, 1);
+        }
+        
+        void initDma()
+        {
+            dma_channel = dma_claim_unused_channel(true);
+            dma_config = dma_channel_get_default_config(dma_channel);
+            channel_config_set_transfer_data_size(&dma_config, DMA_SIZE_8);
+            channel_config_set_dreq(&dma_config, pio_get_dreq(pio, pio_sm, true));
         }
 
-        FrameBuffer &getBackBuffer()
+        void initSpiPio(PIO p_pio)
         {
-            return frame_buffers[(front_buffer_idx + 1) % frame_buffers.size()];
-        }
-
-        void swapBuffers()
-        {
-            if (dma_channel_is_busy(dma_channel))
-            {
-                dma_channel_wait_for_finish_blocking(dma_channel);
-            }
-
-            deselectDevice();
-            selectDevice();
+            pio = p_pio;
             
-            setCmdMode();
-            writeCmd(0xB0, 0x00); // reset row 0
-            writeCmd(0x00, 0x10); // reset to column 0
-            setDataMode();
+            static const std::array<std::uint16_t, 6> instructions{
+                // command program
+                static_cast<std::uint16_t>(
+                    pio_encode_set(pio_src_dest::pio_x, 7) |
+                    pio_encode_sideset(1, 0) |
+                    pio_encode_delay(0)),
+                static_cast<std::uint16_t>(
+                    pio_encode_out(pio_src_dest::pio_pins, 1) |
+                    pio_encode_sideset(1, 0) |
+                    pio_encode_delay(0)),
+                static_cast<std::uint16_t>(
+                    pio_encode_jmp_x_dec(1) |
+                    pio_encode_sideset(1, 1) |
+                    pio_encode_delay(0)),
+                static_cast<std::uint16_t>(
+                    pio_encode_irq_set(false, 0) |
+                    pio_encode_sideset(1, 0) |
+                    pio_encode_delay(0)),
+                // data program
+                static_cast<std::uint16_t>(
+                    pio_encode_out(pio_src_dest::pio_pins, 1) |
+                    pio_encode_sideset(1, 0) |
+                    pio_encode_delay(0)),
+                static_cast<std::uint16_t>(
+                    pio_encode_nop() |
+                    pio_encode_sideset(1, 1) |
+                    pio_encode_delay(0)),
+            };
 
-            const auto &back_buffer = getBackBuffer().getBuffer();
+            // printf("out: 0x%x\n", instructions[0]);
+            // printf("in: 0x%x\n", instructions[1]);
+
+            const pio_program program {
+                .instructions = instructions.data(),
+                .length = static_cast<std::uint8_t>(instructions.size()),
+                .origin = -1,
+                .pio_version = 0,
+            };
+
+            pio_sm = pio_claim_unused_sm(pio, true);
+
+            pio_offset = pio_add_program(pio, &program);
+            auto config{pio_get_default_sm_config()};
+
+            sm_config_set_wrap(&config, pio_offset + 0, pio_offset + 3);
+
+            sm_config_set_sideset(&config, 1, false, false);
+            sm_config_set_out_shift(&config, false, true, 8);
+            sm_config_set_in_shift(&config, false, false, 8);
+            // sm_config_set_clkdiv_int_frac8(&config, 4, 0);
+            sm_config_set_clkdiv_int_frac8(&config, 2, 0);
+
+            sm_config_set_out_pins(&config, mosi, 1);
+            sm_config_set_sideset_pins(&config, sck);
+            
+            pio_sm_set_pins_with_mask(pio, pio_sm, 0, (1u << sck) | (1u << mosi));
+            pio_sm_set_pindirs_with_mask(pio, pio_sm, -1, (1u << sck) | (1u << mosi));
+            pio_gpio_init(pio, mosi);
+            pio_gpio_init(pio, sck);
+
+            pio_sm_init(pio, pio_sm, pio_offset, &config);
+            pio_sm_set_enabled(pio, pio_sm, true);
+        }
+
+        void __time_critical_func(pioSpiWriteBlocking)(const std::uint8_t* p_src, std::size_t p_len)
+        {
+            pioSpiWrite(p_src, p_len);
+
+            dma_channel_wait_for_finish_blocking(dma_channel);
+
+            while (!pio_interrupt_get(pio, 0))
+            {
+                tight_loop_contents();
+            }
+            pio_interrupt_clear(pio, 0);
+        }
+        
+        void __time_critical_func(pioSpiWrite)(const std::uint8_t* p_src, std::size_t p_len)
+        {
             dma_channel_configure(
                 dma_channel,
                 &dma_config,
-                &spi_get_hw(spi)->dr,
-                back_buffer.data(),
-                back_buffer.size(),
+                &pio->txf[pio_sm],
+                p_src,
+                p_len,
                 true);
-
-
-            front_buffer_idx = (front_buffer_idx + 1) % frame_buffers.size();
         }
 
-    private:
-        void selectDevice()
-        {
-            gpio_put(cs, 0);
-        }
 
-        void deselectDevice()
-        {
-            gpio_put(cs, 1);
-        }
-
-        void setCmdMode()
-        {
-            gpio_put(dc, 0);
-        }
-
-        void setDataMode()
-        {
-            gpio_put(dc, 1);
-        }
-
-        void writeCmd(std::uint8_t p_cmd)
-        {
-            spi_write_blocking(spi, &p_cmd, 1);
-        }
-
-        void writeCmd(std::uint8_t p_cmd, std::uint8_t p_value)
-        {
-            writeCmd(p_cmd);
-            writeCmd(p_value);
-        }
-
-        void writeData(const std::uint8_t *p_data, std::size_t p_len)
-        {
-            spi_write_blocking(spi, p_data, p_len);
-            return;
-        }
     };
 
 } // namespace pg
