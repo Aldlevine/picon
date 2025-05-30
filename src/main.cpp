@@ -4,14 +4,7 @@
 #include "graphics/graphics.hpp"
 #include "time/time.hpp"
 
-#include <hardware/flash.h>
-#include <hardware/spi.h>
-#include <pico.h>
-#include <pico/stdlib.h>
-
 #include <cmath>
-#include <cstdint>
-#include <cstdio>
 #include <malloc.h>
 
 extern char __flash_binary_start;
@@ -54,8 +47,8 @@ T_Data valueScissor(T_Data p_dst, T_Data p_src)
 constexpr auto gs4WhiteScissor{valueScissor<std::uint8_t, 0x0F>};
 
 
-const auto& bg_image = pg::assets::bg;
-const auto& blit_image1 = pg::assets::heart;
+constexpr auto& bg_image = pg::assets::bg;
+constexpr auto& blit_image1 = pg::assets::heart;
 const auto blit_image2 = blit_image1.flipped(true, true);
 
 std::float_t bg_offset_x{ 0 };
@@ -65,15 +58,15 @@ constexpr std::float_t bg_speed_y{(64.0) / 1'000'000 * 0.125};
 
 std::float_t heart_offset_x{ blit_image1.width * -2.0 };
 std::float_t heart_offset_y{ blit_image1.height * -4.0 };
-constexpr std::float_t heart_speed_x{(256.0 + 32.0) / 1'000'000 * 0.5};
-constexpr std::float_t heart_speed_y{(64.0 + 64.0) / 1'000'000 * 0.25};
+constexpr std::float_t heart_speed_x{(256.0 + 32.0) / 1'000'000 / 2};
+constexpr std::float_t heart_speed_y{(64.0 + 64.0) / 1'000'000 / 4};
 
 
 void displayTick(std::uint64_t p_delta)
 {
     auto &fb = display.getBackBuffer();
 
-    fb.fill(0x00);
+    // fb.fill(0x0F);
 
     bg_offset_x += p_delta * bg_speed_x;
     bg_offset_y += p_delta * bg_speed_y;
@@ -131,7 +124,6 @@ void displayTick(std::uint64_t p_delta)
 
     display.swapBuffers();
 }
-
 
 int main()
 {
