@@ -12,6 +12,8 @@ namespace pg {
     {
         /// 4 bit grayscale, with upper-nibble on the left, and lower-nibble on the right
         GS4_HMSB,
+        /// 4 bit grayscale, with 1 byte per pixel
+        GS4,
     };
 
     /// Used to specify at what ratio an image's `Data` maps to pixels.
@@ -44,7 +46,6 @@ namespace pg {
     {
         using Derived = T_Derived;
         using Data = ImageFormatTraits<t_image_format>::Data;
-        // using BlendMode = ImageFormatTraits<t_image_format>::BlendMode;
         using BlendMode = Data (*)(Data, Data);
         static constexpr auto image_format = t_image_format;
         static constexpr auto px_ratio = ImageFormatTraits<t_image_format>::px_ratio;
@@ -63,8 +64,6 @@ namespace pg {
 
         template <typename... VT_Args>
         constexpr Image(VT_Args... p_args) : buffer{p_args...} {}
-
-        static Data blendPixels(BlendMode p_blend_mode, Data p_src, Data p_dst);
 
         constexpr Derived clone() const { return Derived(buffer); }
 
@@ -100,15 +99,9 @@ namespace pg {
 
     
     template<ImageFormat t_image_format, std::size_t t_width, std::size_t t_height, typename T_Derived>
-    inline auto Image<t_image_format, t_width, t_height, T_Derived>::blendPixels(BlendMode p_blend_mode, Data p_dst, Data p_src) -> Data
-    {
-        return p_blend_mode(p_dst, p_src);
-    }
-
-    template<ImageFormat t_image_format, std::size_t t_width, std::size_t t_height, typename T_Derived>
     inline void Image<t_image_format, t_width, t_height, T_Derived>::clear()
     {
-        fill(Data{});
+        static_cast<Derived *>(this)->fill(Data{});
     }
 
     template<ImageFormat t_image_format, std::size_t t_width, std::size_t t_height, typename T_Derived>
@@ -164,7 +157,7 @@ namespace pg {
     inline T_Derived Image<t_image_format, t_width, t_height, T_Derived>::flipped(bool p_x, bool p_y) const
     {
         auto result = this->clone();
-        result.flip(p_x, p_y);
+        static_cast<Derived *>(&result)->flip(p_x, p_y);
         return result;
     }
 
@@ -251,7 +244,7 @@ namespace pg {
             p_src_h = height - p_dst_y;
         }
 
-        blit(p_dst_x, p_dst_y, p_src, p_src_x, p_src_y, p_src_w, p_src_h, p_blend_mode);
+        static_cast<Derived *>(this)->blit(p_dst_x, p_dst_y, p_src, p_src_x, p_src_y, p_src_w, p_src_h, p_blend_mode);
     }
 
 

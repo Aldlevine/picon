@@ -64,11 +64,11 @@ def make_image_dims_even(img: Image.Image) -> Image.Image:
     width = img.width
     height = img.height
 
-    if width % 2 == 1:
-        width += 1
+    # if width % 2 == 1:
+    #     width += 1
 
-    if height % 2 == 1:
-        height += 1
+    # if height % 2 == 1:
+    #     height += 1
 
     return img.crop((0, 0, width, height))
 
@@ -87,7 +87,8 @@ def make_image_decl(
     if font_json:
         name += "_image"
     decl_file.write(
-        f"extern const Image<ImageFormat::GS4_HMSB, {img.width}, {img.height}> {name};\n"
+        # f"extern const Image<ImageFormat::GS4_HMSB, {img.width}, {img.height}> {name};\n"
+        f"extern const Image<ImageFormat::GS4, {img.width}, {img.height}> {name};\n"
     )
 
 
@@ -104,15 +105,18 @@ def make_image_impl(
     pixel_data = bytearray()
 
     for px0 in pixels:
-        px1 = next(pixels, 0)
-        byte = (px0 << 4) | px1
-        pixel_data.append(byte)
+        # px1 = next(pixels, 0)
+        # byte = (px0 << 4) | px1
+        # pixel_data.append(byte)
+        pixel_data.append(px0)
 
     impl_file.write(
-        f"const Image<ImageFormat::GS4_HMSB, {img.width}, {img.height}> {name}{{{{"
+        # f"const Image<ImageFormat::GS4_HMSB, {img.width}, {img.height}> {name}{{{{"
+        f"const Image<ImageFormat::GS4, {img.width}, {img.height}> {name}{{{{"
     )
     for i, byte in enumerate(pixel_data):
-        if i % (img.width // 2) == 0:
+        # if i % (img.width // 2) == 0:
+        if i % (img.width) == 0:
             impl_file.write("\n    ")
         impl_file.write(f"(uint8_t)(0x{byte:02X}), ")
     impl_file.write("\n}};\n")
@@ -165,7 +169,8 @@ def make_font_decl(decl_file: TextIOWrapper, font_path: str) -> None:
     img = load_image(image_path)
     name = pathlib.PurePath(font_path).stem
     decl_file.write(
-        f"extern const Font<Image<ImageFormat::GS4_HMSB, {img.width}, {img.height}>> {name};\n"
+        # f"extern const Font<Image<ImageFormat::GS4_HMSB, {img.width}, {img.height}>> {name};\n"
+        f"extern const Font<Image<ImageFormat::GS4, {img.width}, {img.height}>> {name};\n"
     )
 
 
@@ -179,11 +184,12 @@ def make_font_impl(impl_file: TextIOWrapper, font_path: str) -> None:
     name = pathlib.PurePath(font_path).stem
 
     impl_file.write(
-        f"const Font<Image<ImageFormat::GS4_HMSB, {img.width}, {img.height}>> {name} {{\n"
+        # f"const Font<Image<ImageFormat::GS4_HMSB, {img.width}, {img.height}>> {name} {{\n"
+        f"const Font<Image<ImageFormat::GS4, {img.width}, {img.height}>> {name} {{\n"
     )
 
     impl_file.write(f"    .image = {name}_image,\n")
-    impl_file.write("    .glyph_rect_map = {\n")
+    impl_file.write( "    .glyph_rect_map = {\n")
     for frame in font_json["frames"]:
         impl_file.write(
             f"        GlyphRect{{ {frame['frame']['x']}, {frame['frame']['y']}, {frame['frame']['w']}, {frame['frame']['h']}, 0, {frame['spriteSourceSize']['y']} }},\n"

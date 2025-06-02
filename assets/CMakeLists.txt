@@ -18,6 +18,7 @@ target_include_directories(image_data PUBLIC
 )
 
 target_link_libraries(image_data
+  hardware_dma
   pico_stdlib
 )
 

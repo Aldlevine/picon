@@ -22,6 +22,9 @@ namespace pg
 
     enum class SH1122Commands : std::uint8_t
     {
+        set_lower_column_addr = 0x00,
+        set_higher_column_addr = 0x10,
+        set_row_addr = 0xB0,
         display_off = 0xAE,
         display_on = 0xAF,
         set_display_clock_div = 0xD5,
@@ -66,7 +69,7 @@ namespace pg
         static constexpr auto rst = t_rst;
 
     public:
-        using FrameBuffer = Image<ImageFormat::GS4_HMSB, width, height>;
+        using FrameBuffer = Image<ImageFormat::GS4, width, height>;
 
     private:
         std::array<FrameBuffer, 2> frame_buffers{};
@@ -78,6 +81,11 @@ namespace pg
         PIO pio{};
         uint pio_sm{};
         uint pio_offset{};
+
+        uint pio_command_start{};
+        uint pio_command_end{};
+        uint pio_data_start{};
+        uint pio_data_end{};
 
     public:
         void init(PIO p_pio)
@@ -109,8 +117,8 @@ namespace pg
             selectDevice();
             
             setCmdMode();
-            writeCmd(0xB0, 0x00); // reset row 0
-            writeCmd(0x00, 0x10); // reset to column 0
+            writeCmd(+SH1122Commands::set_row_addr, 0x00);
+            writeCmd(+SH1122Commands::set_lower_column_addr, +SH1122Commands::set_higher_column_addr);
             setDataMode();
 
             const auto &back_buffer = getBackBuffer().getBuffer();
@@ -133,7 +141,7 @@ namespace pg
         void setCmdMode()
         {
             pio_sm_set_enabled(pio, pio_sm, false);
-            pio_sm_set_wrap(pio, pio_sm, pio_offset + 0, pio_offset + 3);
+            pio_sm_set_wrap(pio, pio_sm, pio_offset + pio_command_start, pio_offset + pio_command_end);
             pio->sm[pio_sm].instr = pio_offset + 0;
             pio_sm_set_enabled(pio, pio_sm, true);
             gpio_put(dc, 0);
@@ -142,7 +150,7 @@ namespace pg
         void setDataMode()
         {
             pio_sm_set_enabled(pio, pio_sm, false);
-            pio_sm_set_wrap(pio, pio_sm, pio_offset + 4, pio_offset + 5);
+            pio_sm_set_wrap(pio, pio_sm, pio_offset + pio_data_start, pio_offset + pio_data_end);
             pio->sm[pio_sm].instr = pio_offset + 4;
             pio_sm_set_enabled(pio, pio_sm, true);
             gpio_put(dc, 1);
@@ -214,34 +222,39 @@ namespace pg
         {
             pio = p_pio;
             
-            static const std::array<std::uint16_t, 6> instructions{
+            static const std::array<std::uint16_t, 8> instructions{
                 // command program
                 static_cast<std::uint16_t>(
                     pio_encode_set(pio_src_dest::pio_x, 7) |
-                    pio_encode_sideset(1, 0) |
-                    pio_encode_delay(0)),
+                    pio_encode_sideset(1, 0)),
                 static_cast<std::uint16_t>(
                     pio_encode_out(pio_src_dest::pio_pins, 1) |
-                    pio_encode_sideset(1, 0) |
-                    pio_encode_delay(0)),
+                    pio_encode_sideset(1, 0)),
                 static_cast<std::uint16_t>(
                     pio_encode_jmp_x_dec(1) |
-                    pio_encode_sideset(1, 1) |
-                    pio_encode_delay(0)),
+                    pio_encode_sideset(1, 1)),
                 static_cast<std::uint16_t>(
                     pio_encode_irq_set(false, 0) |
-                    pio_encode_sideset(1, 0) |
-                    pio_encode_delay(0)),
+                    pio_encode_sideset(1, 0)),
                 // data program
                 static_cast<std::uint16_t>(
-                    pio_encode_out(pio_src_dest::pio_pins, 1) |
-                    pio_encode_sideset(1, 0) |
-                    pio_encode_delay(0)),
+                    pio_encode_out(pio_src_dest::pio_null, 4) |
+                    pio_encode_sideset(1, 0)),
                 static_cast<std::uint16_t>(
-                    pio_encode_nop() |
-                    pio_encode_sideset(1, 1) |
-                    pio_encode_delay(0)),
+                    pio_encode_set(pio_src_dest::pio_x, 3) |
+                    pio_encode_sideset(1, 0)),
+                static_cast<std::uint16_t>(
+                    pio_encode_out(pio_src_dest::pio_pins, 1) |
+                    pio_encode_sideset(1, 0)),
+                static_cast<std::uint16_t>(
+                    pio_encode_jmp_x_dec(6) |
+                    pio_encode_sideset(1, 1)),
             };
+
+            pio_command_start = 0;
+            pio_command_end = 3;
+            pio_data_start = 4;
+            pio_data_end = 7;
 
             // printf("out: 0x%x\n", instructions[0]);
             // printf("in: 0x%x\n", instructions[1]);
@@ -258,13 +271,13 @@ namespace pg
             pio_offset = pio_add_program(pio, &program);
             auto config{pio_get_default_sm_config()};
 
-            sm_config_set_wrap(&config, pio_offset + 0, pio_offset + 3);
+            sm_config_set_wrap(&config, pio_offset + pio_command_start, pio_offset + pio_command_end);
 
             sm_config_set_sideset(&config, 1, false, false);
             sm_config_set_out_shift(&config, false, true, 8);
             sm_config_set_in_shift(&config, false, false, 8);
             // sm_config_set_clkdiv_int_frac8(&config, 4, 0);
-            sm_config_set_clkdiv_int_frac8(&config, 2, 0);
+            sm_config_set_clkdiv_int_frac8(&config, 3, 0);
 
             sm_config_set_out_pins(&config, mosi, 1);
             sm_config_set_sideset_pins(&config, sck);
