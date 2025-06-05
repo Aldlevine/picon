@@ -36,18 +36,6 @@ pg::SH1122Driver<
     > display{};
 
 
-template <typename T_Data, T_Data t_value>
-T_Data valueScissor(T_Data p_dst, T_Data p_src)
-{
-    if (p_src == t_value)
-    {
-        return p_dst;
-    }
-    return p_src;
-}
-constexpr auto gs4WhiteScissor{valueScissor<std::uint8_t, 0x0F>};
-
-
 constexpr auto& bg_image = pg::assets::bg;
 constexpr auto& blit_image1 = pg::assets::heart;
 const auto blit_image2 = blit_image1.flipped(true, true);
@@ -126,8 +114,7 @@ void displayTick(std::uint64_t p_delta)
                 heart_y + static_cast<std::int16_t>(j * image.height),
                 image,
                 -1, -1,
-                -1, -1,
-                gs4WhiteScissor);
+                -1, -1);
         }
     }
 

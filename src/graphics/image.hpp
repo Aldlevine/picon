@@ -46,7 +46,6 @@ namespace pg {
     {
         using Derived = T_Derived;
         using Data = ImageFormatTraits<t_image_format>::Data;
-        using BlendMode = Data (*)(Data, Data);
         static constexpr auto image_format = t_image_format;
         static constexpr auto px_ratio = ImageFormatTraits<t_image_format>::px_ratio;
         static constexpr auto max_value = ImageFormatTraits<t_image_format>::max_value;
@@ -68,13 +67,13 @@ namespace pg {
         constexpr Derived clone() const { return Derived(buffer); }
 
         constexpr Data getPixel(std::size_t p_x, std::size_t p_y) const = delete;
-        Data setPixel(std::size_t p_x, std::size_t p_y, Data p_value, BlendMode p_blend_mode = {}) const = delete;
+        Data setPixel(std::size_t p_x, std::size_t p_y, Data p_value) const = delete;
 
         constexpr const auto &getBuffer() const { return buffer; }
         auto &getBuffer() { return buffer; }
 
         void clear();
-        void fill(Data p_value, BlendMode p_blend_mode = {});
+        void fill(Data p_value);
         
         void flip(bool p_x, bool p_y);
         Derived flipped(bool p_x, bool p_y) const;
@@ -84,16 +83,14 @@ namespace pg {
             std::size_t p_dst_x, std::size_t p_dst_y,
             const Image<image_format, t_other_width, t_other_height> &p_src,
             std::size_t p_src_x, std::size_t p_src_y,
-            std::size_t p_src_w, std::size_t p_src_h,
-            BlendMode p_blend_mode = {});
+            std::size_t p_src_w, std::size_t p_src_h);
 
         template<std::size_t t_other_width, std::size_t t_other_height>
         void blitSafe(
             std::int64_t p_dst_x, std::int64_t p_dst_y,
             const Image<image_format, t_other_width, t_other_height> &p_src,
             std::size_t p_src_x, std::size_t p_src_y,
-            std::size_t p_src_w, std::size_t p_src_h,
-            BlendMode p_blend_mode = {});
+            std::size_t p_src_w, std::size_t p_src_h);
 
     };
 
@@ -105,13 +102,13 @@ namespace pg {
     }
 
     template<ImageFormat t_image_format, std::size_t t_width, std::size_t t_height, typename T_Derived>
-    inline void Image<t_image_format, t_width, t_height, T_Derived>::fill(Data p_value, BlendMode p_blend_mode)
+    inline void Image<t_image_format, t_width, t_height, T_Derived>::fill(Data p_value)
     {
         for (std::size_t x = 0; x < t_width; ++x)
         {
             for (std::size_t y = 0; y < t_height; ++y)
             {
-                static_cast<Derived *>(this)->setPixel(x, y, p_value, p_blend_mode);
+                static_cast<Derived *>(this)->setPixel(x, y, p_value);
             }
         }
     }
@@ -167,8 +164,7 @@ namespace pg {
         std::size_t p_dst_x, std::size_t p_dst_y,
         const Image<image_format, t_other_width, t_other_height> &p_src,
         std::size_t p_src_x, std::size_t p_src_y,
-        std::size_t p_src_w, std::size_t p_src_h,
-        BlendMode p_blend_mode)
+        std::size_t p_src_w, std::size_t p_src_h)
     {
         // clang-format off
         if (p_src_x == -1) { p_src_x = 0; }
@@ -185,7 +181,7 @@ namespace pg {
             for (size_t sx = 0; sx < p_src_w; ++sx)
             {
                 auto src_pixel = p_src.getPixel(p_src_x + sx, p_src_y + sy);
-                static_cast<Derived *>(this)->setPixel(p_dst_x + sx, p_dst_y + sy, src_pixel, p_blend_mode);
+                static_cast<Derived *>(this)->setPixel(p_dst_x + sx, p_dst_y + sy, src_pixel);
             }
         }
     }
@@ -196,8 +192,7 @@ namespace pg {
         std::int64_t p_dst_x, std::int64_t p_dst_y,
         const Image<image_format, t_other_width, t_other_height> &p_src,
         std::size_t p_src_x, std::size_t p_src_y,
-        std::size_t p_src_w, std::size_t p_src_h,
-        BlendMode p_blend_mode)
+        std::size_t p_src_w, std::size_t p_src_h)
     {
         // clang-format off
         if (p_src_x == -1) { p_src_x = 0; }
@@ -244,8 +239,23 @@ namespace pg {
             p_src_h = height - p_dst_y;
         }
 
-        static_cast<Derived *>(this)->blit(p_dst_x, p_dst_y, p_src, p_src_x, p_src_y, p_src_w, p_src_h, p_blend_mode);
+        static_cast<Derived *>(this)->blit(p_dst_x, p_dst_y, p_src, p_src_x, p_src_y, p_src_w, p_src_h);
     }
 
+    template <typename T_Type>
+    struct IsImageStruct{
+        static constexpr auto value{false};
+    };
 
+    template <ImageFormat t_image_format, std::size_t t_width, std::size_t t_height>
+    struct IsImageStruct<Image<t_image_format, t_width, t_height>>
+    {
+        static constexpr auto value{true};
+    };
+
+    template <typename T_Type>
+    concept IsImage = IsImageStruct<T_Type>::value;
+
+    template<typename T_Type, ImageFormat t_image_format>
+    concept IsImageWithFormat = IsImage<T_Type> && T_Type::image_format == t_image_format;
 } // namespace pg

@@ -26,7 +26,6 @@ namespace pg
         using Base = Image<ImageFormat::GS4, t_width, t_height, This>;
 
         using typename Base::Data;
-        using typename Base::BlendMode;
 
         using Base::image_format;
         using Base::px_ratio;
@@ -45,27 +44,24 @@ namespace pg
             return buffer.at(index);
         }
 
-        void setPixel(std::size_t p_x, std::size_t p_y, Data p_value, BlendMode p_blend_mode = {})
+        void setPixel(std::size_t p_x, std::size_t p_y, Data p_value)
         {
             assert(p_x < width);
             assert(p_y < height);
             assert(p_value <= 0x0F);
 
-            // TODO: this transparency masking needs to be configurable
-            if (p_value < 0x0F)
-            {
-                auto index = ((width * p_y) + p_x);
-                buffer.at(index) = p_blend_mode ? p_blend_mode(buffer.at(index), p_value) : p_value;
-            }
+            auto index = ((width * p_y) + p_x);
+            buffer.at(index) = p_value;
+            // // TODO: this transparency masking needs to be configurable
+            // if (p_value < 0x0F)
+            // {
+            //     auto index = ((width * p_y) + p_x);
+            //     buffer.at(index) = p_value;
+            // }
         }
 
-        void fill(Data p_value, BlendMode p_blend_mode = {})
+        void fill(Data p_value)
         {
-            if (p_blend_mode)
-            {
-                static_cast<Base*>(this)->fill(p_value, p_blend_mode);
-                return;
-            }
             memset(buffer.data(), p_value, buffer.size());
         }
 
@@ -74,15 +70,8 @@ namespace pg
             std::size_t p_dst_x, std::size_t p_dst_y,
             const Image<image_format, t_other_width, t_other_height> &p_src,
             std::size_t p_src_x, std::size_t p_src_y,
-            std::size_t p_src_w, std::size_t p_src_h,
-            BlendMode p_blend_mode)
+            std::size_t p_src_w, std::size_t p_src_h)
         {
-            if (p_blend_mode)
-            {
-                static_cast<Base *>(this)->blit(p_dst_x, p_dst_y, p_src, p_src_x, p_src_y, p_src_w, p_src_h, p_blend_mode);
-                return;
-            }
-
             // clang-format off
             if (p_src_x == -1) { p_src_x = 0; }
             if (p_src_y == -1) { p_src_y = 0; }
@@ -102,10 +91,8 @@ namespace pg
 
             for (size_t sy = 0; sy < p_src_h; ++sy)
             {
-
                 auto dst_index = ((width * (p_dst_y + sy)) + p_dst_x);
                 auto src_index = ((p_src.width * (p_src_y + sy)) + p_src_x);
-                // memcpy(buffer.data() + dst_index, p_src.buffer.data() + src_index, p_src_w);
                 dma_channel_configure(dma_channel, &dma_config, buffer.data() + dst_index, p_src.buffer.data() + src_index, p_src_w, true);
                 dma_channel_wait_for_finish_blocking(dma_channel);
             }
