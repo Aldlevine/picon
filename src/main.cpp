@@ -4,7 +4,16 @@
 #include "graphics/graphics.hpp"
 #include "time/time.hpp"
 
+#include <hardware/dma.h>
+#include <hardware/pio.h>
+#include <hardware/pio_instructions.h>
+#include <hardware/timer.h>
+#include <pico/time.h>
+
+#include <climits>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <malloc.h>
 #include <ratio>
 
@@ -121,6 +130,136 @@ void displayTick(std::uint64_t p_delta)
     display.swapBuffers();
 }
 
+void maskedDmaTest()
+{
+    using Data = std::uint8_t;
+    constexpr auto num_bits = sizeof(Data) * CHAR_BIT;
+    assert(num_bits < 16);
+
+    constexpr auto write_src_label = 6;
+    constexpr auto write_dst_label = 2;
+
+    std::array pio_commands = {
+        static_cast<std::uint16_t>( pio_encode_out(pio_src_dest::pio_x, num_bits) ), // get x(src) from fifo
+        static_cast<std::uint16_t>( pio_encode_jmp_x_ne_y(write_src_label) ), // if x(src) != y(mask) write x(src)
+        // write_dst_label
+        static_cast<std::uint16_t>( pio_encode_set(pio_src_dest::pio_x, 0) ), // clear x(src)
+        static_cast<std::uint16_t>( pio_encode_out(pio_src_dest::pio_x, num_bits) ), // get x(dst) from fifo
+        static_cast<std::uint16_t>( pio_encode_in(pio_src_dest::pio_x, num_bits) ), // shift x(dst) to fifo
+        static_cast<std::uint16_t>( pio_encode_jmp(0) ), // jump to start
+        // write_src_label
+        static_cast<std::uint16_t>( pio_encode_out(pio_src_dest::pio_null, num_bits) ), // toss dst bits from fifo
+        static_cast<std::uint16_t>( pio_encode_in(pio_src_dest::pio_x, num_bits) ), // shift x(src) to fifo
+    };
+
+    const pio_program_t program{
+        .instructions = pio_commands.data(),
+        .length = pio_commands.size(),
+        .origin = -1,
+        .pio_version = 0,
+    };
+
+    const auto pio{pio1};
+    const auto sm{pio_claim_unused_sm(pio, true)};
+    const auto offset{pio_add_program(pio, &program)};
+
+    auto pio_config{pio_get_default_sm_config()};
+    sm_config_set_wrap(&pio_config, offset, offset + pio_commands.size() - 1);
+    sm_config_set_in_shift(&pio_config, false, true, num_bits);
+    sm_config_set_out_shift(&pio_config, true, true, num_bits);
+
+    pio_sm_init(pio, sm, offset, &pio_config);
+    pio_sm_set_enabled(pio, sm, true);
+
+    const auto src_chan{dma_claim_unused_channel(true)};
+    const auto dst_chan{dma_claim_unused_channel(true)};
+    const auto res_chan{dma_claim_unused_channel(true)};
+    auto src_config{dma_channel_get_default_config(src_chan)};
+    auto dst_config{dma_channel_get_default_config(dst_chan)};
+    auto res_config{dma_channel_get_default_config(res_chan)};
+
+    channel_config_set_transfer_data_size(&src_config, dma_channel_transfer_size::DMA_SIZE_8);
+    channel_config_set_transfer_data_size(&dst_config, dma_channel_transfer_size::DMA_SIZE_8);
+    channel_config_set_transfer_data_size(&res_config, dma_channel_transfer_size::DMA_SIZE_8);
+
+    channel_config_set_read_increment(&src_config, true);
+    channel_config_set_read_increment(&dst_config, true);
+    channel_config_set_read_increment(&res_config, false);
+
+    channel_config_set_write_increment(&src_config, false);
+    channel_config_set_write_increment(&dst_config, false);
+    channel_config_set_write_increment(&res_config, true);
+
+    channel_config_set_dreq(&src_config, pio_get_dreq(pio, sm, true));
+    channel_config_set_dreq(&dst_config, pio_get_dreq(pio, sm, true));
+    channel_config_set_dreq(&res_config, pio_get_dreq(pio, sm, false));
+
+    channel_config_set_chain_to(&src_config, dst_chan);
+    channel_config_set_chain_to(&dst_config, src_chan);
+
+    constexpr std::uint8_t mask_value{0};
+    std::array<std::uint8_t, 8> dst_buffer  {1, 2, 3, 4, 5, 6, 7, 8};
+    std::array<std::uint8_t, 8> src_buffer  {0, 1, 0, 2, 0, 3, 0, 4};
+    std::array<std::uint8_t, 8> src2_buffer {1, 0, 2, 0, 3, 0, 4, 0};
+                                             
+    // set mask value
+    pio_sm_exec(pio, sm, pio_encode_set(pio_src_dest::pio_y, 0)); // clear y(mask)
+    pio_sm_exec(pio, sm, pio_encode_out(pio_src_dest::pio_y, num_bits)); // get y(mask) from fifo
+    pio_sm_put_blocking(pio, sm,mask_value); // put mask on fifo
+
+    printf("\nsrc 1:\n");
+    {
+        // reset pio
+        pio_sm_clear_fifos(pio, sm);
+        pio->sm[sm].instr = offset;
+
+        // setup dma channels
+        dma_channel_configure(
+            src_chan, &src_config, &pio->txf[sm], src_buffer.data(), 1, false);
+        dma_channel_configure(
+            dst_chan, &dst_config, &pio->txf[sm], dst_buffer.data(), 1, false);
+        dma_channel_configure(
+            res_chan, &res_config, dst_buffer.data(), &pio->rxf[sm], dst_buffer.size(), false);
+
+        // run dma and cleanup when done
+        dma_start_channel_mask((1 << src_chan) | (1 << res_chan));
+        dma_channel_wait_for_finish_blocking(res_chan);
+        dma_channel_cleanup(src_chan);
+        dma_channel_cleanup(dst_chan);
+
+        for (std::size_t i = 0; i < dst_buffer.size(); ++i)
+        {
+            printf("    %d = %d\n", i, dst_buffer.at(i));
+        }
+    }
+
+    printf("\nsrc 2:\n");
+    {
+        // reset pio
+        pio_sm_clear_fifos(pio, sm);
+        pio->sm[sm].instr = offset;
+
+        // setup dma channels
+        dma_channel_configure(
+            src_chan, &src_config, &pio->txf[sm], src2_buffer.data(), 1, false);
+        dma_channel_configure(
+            dst_chan, &dst_config, &pio->txf[sm], dst_buffer.data(), 1, false);
+        dma_channel_configure(
+            res_chan, &res_config, dst_buffer.data(), &pio->rxf[sm], dst_buffer.size(), false);
+
+        // run dma and cleanup when done
+        dma_start_channel_mask((1 << src_chan) | (1 << res_chan));
+        dma_channel_wait_for_finish_blocking(res_chan);
+        dma_channel_cleanup(src_chan);
+        dma_channel_cleanup(dst_chan);
+
+        for (std::size_t i = 0; i < dst_buffer.size(); ++i)
+        {
+            printf("    %d = %d\n", i, dst_buffer.at(i));
+        }
+    }
+}
+
 int main()
 {
     stdio_init_all();
@@ -129,9 +268,11 @@ int main()
     printf("Flash Binary Start: 0x%x\n", flash_binary_start);
     printf("Flash Binary End: 0x%x\n", flash_binary_end);
 
+    maskedDmaTest();
+
     display.init(pio0);
 
-    pg::DeltaTimer display_timer{std::micro::den / 60};
+    pg::DeltaTimer display_timer{std::micro::den / 240};
 
     while (true)
     {
