@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <optional>
 
-namespace pg
+namespace picon::math
 {
 
     template <typename T_Unit>
@@ -47,4 +47,4 @@ namespace pg
         }
     };
 
-} // namespace pg
+} // namespace picon::math

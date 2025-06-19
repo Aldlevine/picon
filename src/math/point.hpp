@@ -1,6 +1,6 @@
 #pragma once
 
-namespace pg
+namespace picon::math
 {
 
     template <typename T_Unit>
@@ -41,4 +41,4 @@ namespace pg
         #undef BIN_BOOL_OP
     };
 
-} // namespace pg
+} // namespace picon::math

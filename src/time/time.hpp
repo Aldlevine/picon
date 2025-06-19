@@ -5,7 +5,8 @@
 
 #include <cstdint>
 
-namespace pg {
+namespace picon::time
+{
 
     template <std::uint64_t t_us_per_tick, auto t_callback>
     struct RepeatingTimer
@@ -120,4 +121,4 @@ namespace pg {
         
     };
 
-} // namespace pg
+} // namespace picon::time

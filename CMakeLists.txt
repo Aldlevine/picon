@@ -25,13 +25,16 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
 set_target_properties(pico_game PROPERTIES
         C_STANDARD 11
-        CXX_STANDARD 20)
+        CXX_STANDARD 23)
+
+target_compile_options(pico_game PRIVATE -fPIC)
 
 target_link_libraries(pico_game PRIVATE
         hardware_dma
         hardware_flash
         hardware_pio
         hardware_spi
+        pico_rand
         pico_stdlib
         image_data)
 

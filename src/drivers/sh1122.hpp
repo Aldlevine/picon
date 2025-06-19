@@ -1,6 +1,6 @@
 #pragma once
 
-#include "graphics/graphics.hpp"
+#include "graphics/image.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -17,7 +17,7 @@
 
 #include <array>
 
-namespace pg
+namespace picon::drivers
 {
 
     enum class SH1122Commands : std::uint8_t
@@ -69,10 +69,15 @@ namespace pg
         static constexpr auto rst = t_rst;
 
     public:
-        using FrameBuffer = Image<ImageFormat::GS4, width, height>;
+        using FrameBufferData = graphics::ImageData<graphics::color::GS4, width, height>;
+        using FrameBuffer = graphics::Image<graphics::color::GS4>;
 
     private:
-        std::array<FrameBuffer, 2> frame_buffers{};
+        std::array<FrameBufferData, 2> frame_buffer_data{};
+        std::array<FrameBuffer, 2> frame_buffers{
+            frame_buffer_data[0],
+            frame_buffer_data[1],
+        };
         std::size_t front_buffer_idx{};
 
         std::uint8_t dma_channel{};
@@ -96,12 +101,12 @@ namespace pg
             initDisplay();
         }
 
-        FrameBuffer &getFrontBuffer()
+        FrameBuffer& getFrontBuffer()
         {
             return frame_buffers[front_buffer_idx];
         }
 
-        FrameBuffer &getBackBuffer()
+        FrameBuffer& getBackBuffer()
         {
             return frame_buffers[(front_buffer_idx + 1) % frame_buffers.size()];
         }
@@ -121,10 +126,11 @@ namespace pg
             writeCmd(+SH1122Commands::set_lower_column_addr, +SH1122Commands::set_higher_column_addr);
             setDataMode();
 
-            const auto &back_buffer = getBackBuffer().getBuffer();
-            pioSpiWrite(back_buffer.data(), back_buffer.size());
-
+            const auto &back_buffer = getBackBuffer();
             front_buffer_idx = (front_buffer_idx + 1) % frame_buffers.size();
+
+            pioSpiWrite(std::bit_cast<const std::uint8_t*>(back_buffer.data()), back_buffer.size());
+
         }
 
     private:
@@ -174,7 +180,7 @@ namespace pg
             writeCmd(+SH1122Commands::display_off);
             // writeCmd(+SH1122Commands::set_display_clock_div, 0xF0);
             writeCmd(+SH1122Commands::set_display_clock_div, 0x50);
-            writeCmd(+SH1122Commands::set_display_offset, 0x00);
+            // writeCmd(+SH1122Commands::set_display_offset, 0x00);
             writeCmd(+SH1122Commands::set_start_line, 0x00);
             writeCmd(+SH1122Commands::charge_pump, 0x8F);
             writeCmd(+SH1122Commands::segment_remap | 0x00);
@@ -276,6 +282,7 @@ namespace pg
             sm_config_set_sideset(&config, 1, false, false);
             sm_config_set_out_shift(&config, false, true, 8);
             sm_config_set_in_shift(&config, false, false, 8);
+            // sm_config_set_clkdiv_int_frac8(&config, 8, 0);
             // sm_config_set_clkdiv_int_frac8(&config, 4, 0);
             sm_config_set_clkdiv_int_frac8(&config, 3, 0);
 
@@ -318,4 +325,4 @@ namespace pg
 
     };
 
-} // namespace pg
+} // namespace picon::drivers
