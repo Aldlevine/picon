@@ -1,8 +1,8 @@
 #pragma once
 
-#include "image.hpp"
 #include "blend.hpp"
 #include "color.hpp"
+#include "image.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -11,7 +11,7 @@ namespace picon::graphics::fn
 {
 
     /// generic fill.
-    template <color::Color T_Format>
+    template <color::ColorType T_Format>
     inline void fill(Image<T_Format> p_dst, T_Format p_value)
     {
         std::ranges::fill(p_dst, p_value);
@@ -19,7 +19,7 @@ namespace picon::graphics::fn
 
 
     /// fill rect.
-    template <color::Color T_Format>
+    template <color::ColorType T_Format>
     inline void fillRect(
         Image<T_Format> p_dst,
         std::size_t p_dst_x, std::size_t p_dst_y,
@@ -39,7 +39,7 @@ namespace picon::graphics::fn
 
     /// blit safe resize.
     /// returns true if dst dst rect is in view
-    template <color::Color T_DstFormat, color::Color T_SrcFormat>
+    template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat>
     inline bool blitSafeSize(
         const Image<T_DstFormat> p_dst, std::int64_t& r_dst_x, std::int64_t& r_dst_y,
         const Image<T_SrcFormat> p_src, std::size_t& r_src_x, std::size_t& r_src_y, std::size_t& r_src_w, std::size_t& r_src_h
@@ -88,7 +88,7 @@ namespace picon::graphics::fn
 
 
     /// sized blit.
-    template <color::Color T_DstFormat, color::Color T_SrcFormat, typename T_Blend=blend::None>
+    template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat, typename T_Blend=color::blend::None>
     inline void blit(
         Image<T_DstFormat> p_dst, std::size_t p_dst_x, std::size_t p_dst_y,
         const Image<T_SrcFormat> p_src, std::size_t p_src_x, std::size_t p_src_y, std::size_t p_src_w, std::size_t p_src_h,
@@ -107,7 +107,7 @@ namespace picon::graphics::fn
 
     
     /// generic safe sized blit.
-    template <color::Color T_DstFormat, color::Color T_SrcFormat, typename T_Blend=blend::None>
+    template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat, typename T_Blend=color::blend::None>
     inline void blitSafe(
         Image<T_DstFormat> p_dst, std::int64_t p_dst_x, std::int64_t p_dst_y,
         const Image<T_SrcFormat> p_src, std::size_t p_src_x, std::size_t p_src_y, std::size_t p_src_w, std::size_t p_src_h,
@@ -123,7 +123,7 @@ namespace picon::graphics::fn
 
     /// generic safe full src blit.
     /// forwards to appropriate safe sized blit.
-    template <color::Color T_DstFormat, color::Color T_SrcFormat, typename T_Blend=blend::None>
+    template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat, typename T_Blend=color::blend::None>
     inline void blit(
         Image<T_DstFormat> p_dst, std::size_t p_dst_x, std::size_t p_dst_y, const Image<T_SrcFormat> p_src,
         T_Blend p_blend={}
@@ -134,7 +134,7 @@ namespace picon::graphics::fn
 
     /// generic full src blit.
     /// forwards to appropriate sized blit.
-    template <color::Color T_DstFormat, color::Color T_SrcFormat, typename T_Blend=blend::None>
+    template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat, typename T_Blend=color::blend::None>
     inline void blitSafe(
         Image<T_DstFormat> p_dst, std::int64_t p_dst_x, std::int64_t p_dst_y, const Image<T_SrcFormat> p_src,
         T_Blend p_blend={}

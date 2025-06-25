@@ -5,19 +5,10 @@
 #include "graphics/functions.hpp"
 #include "time/time.hpp"
 
-#include <hardware/dma.h>
-#include <hardware/pio.h>
-#include <hardware/pio_instructions.h>
-#include <hardware/timer.h>
 #include <pico/stdio.h>
-#include <pico/time.h>
 #include <pico/rand.h>
 
-#include <cerrno>
-#include <climits>
 #include <cmath>
-#include <cstddef>
-#include <cstdint>
 #include <malloc.h>
 #include <ratio>
 
@@ -171,7 +162,7 @@ void displayTick(std::uint64_t p_delta)
                     // heart_x,
                     // heart_y,
                     heart,
-                    graphics::blend::alpha);
+                    graphics::color::blend::alpha);
             }
         }
     }
@@ -189,6 +180,7 @@ int main()
 
     display.init(pio0);
 
+    // time::DeltaTimer display_timer{std::micro::den / 60};
     // time::DeltaTimer display_timer{std::micro::den / 120};
     time::DeltaTimer display_timer{std::micro::den / 170};
 

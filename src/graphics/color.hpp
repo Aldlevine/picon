@@ -2,193 +2,126 @@
 
 #include "utils/bit_utils.hpp"
 
+#include <hardware/interp.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
+#include <utility>
 
 namespace picon::graphics::color
 {
-    struct GS4;
-    struct GS4A1;
-    struct R5G6B5;
-    struct R5G5B5A1;
     
-    struct Config
+    /// Color type which holds the configured color channels in a single T_Value.
+    template <typename T_Value, std::array t_channels, std::intmax_t t_alpha_channel = -1>
+    struct Color
     {
-        constexpr static std::size_t max_channels{4};
+        /// channels and their sizes.
+        static constexpr auto channels{t_channels};
 
-        std::array<std::size_t, max_channels> channel_size{};
-        std::intmax_t alpha_channel{-1};
-        
-        constexpr std::size_t numChannels() const
-        {
-            for (std::size_t i = 0; i < max_channels; ++i)
-            {
-                if (channel_size[max_channels] == 0) { return i; }
-            }
-            return max_channels;
-        }
+        /// which channel is alpha (-1 if none).
+        static constexpr auto alpha_channel{t_alpha_channel};
 
-        constexpr std::size_t alphaBits() const
-        {
-            if (alpha_channel < 0)
-            {
-                return 0;
-            }
-            else
-            {
-                return channel_size[alpha_channel];
-            }
-        }
+        /// number of alpha channels (0 or 1).
+        static constexpr auto has_alpha_channel = alpha_channel >= 0;
 
+        /// number of channels.
+        static constexpr auto num_channels = channels.size();
+
+        /// number of color channels.
+        static constexpr auto num_color_channels = num_channels - has_alpha_channel;
+
+        /// number of bits in alpha channel.
+        static constexpr auto alpha_bits = alpha_channel == -1 ? 0 : channels[alpha_channel];
+
+        /// which raw channel is color channel at index
         template <std::size_t t_channel>
-        constexpr std::size_t channelOffset()
-        {
-            static_assert(t_channel <= numChannels());
+        static constexpr auto color_channel =
+            has_alpha_channel && t_channel > alpha_channel ?
+                t_channel + 1 :
+                t_channel;
+        
+        /// size of color channel
+        template <std::size_t t_channel>
+        static constexpr auto color_bits = channels[color_channel<t_channel>];
+
+        /// bit offset of given channel within value.
+        template <std::size_t t_channel>
+        static constexpr auto channel_offset = [](){
+            static_assert(t_channel <= num_channels);
 
             std::size_t result{0};
-            for (std::size_t i = t_channel; i >= 0; --i)
+            for (std::size_t i = num_channels; i > t_channel; --i)
             {
-                result += channel_size[i];
+                result += channels[i - 1];
             }
             return result;
-        }
-    };
-    
-    template <typename T_Value, Config t_config>
-    struct ColorBase
-    {
-        static constexpr auto config = t_config;
+        }();
 
+        /// underlying value.
         T_Value value{};
 
+        /// default construct to 0.
+        constexpr Color() = default;
+
+        // construct with all components.
+        template <typename... T_Args>
+        requires(sizeof...(T_Args) == num_channels)
+        constexpr Color(T_Args... p_args)
+        {
+            value = [&]<std::size_t... t_i>(std::index_sequence<t_i...>) {
+                return (utils::setBits<channel_offset<t_i>, channels[t_i]>(p_args) | ... | 0);
+            }(std::make_index_sequence<sizeof...(T_Args)>());
+        }
+
+        /// get a given channel.
         template <std::size_t t_channel>
         constexpr auto get() const
         {
-            return utils::getBits<config.channelOffset<t_channel>(), config.channel_size[t_channel]>(value);
+            return utils::getBits<channel_offset<t_channel>, channels[t_channel]>(value);
         }
+
+        /// get a given color channel.
+        template <std::size_t t_channel>
+        constexpr auto getColor() const
+        {
+            return get<color_channel<t_channel>>();
+        }
+
+        /// get alpha channel.
+        constexpr auto getAlpha() const
+        {
+            return get<alpha_channel>();
+        }
+        
+        /// convert to underlying value.
+        constexpr operator T_Value() const { return value; }
     };
 
+    /// is T_Type a Color<...>
     template <typename T_Type>
-    concept Color = requires(T_Type t) {
-        {[]<typename T_Value, Config t_config>(ColorBase<T_Value, t_config>){}(t)};
-    };
+    struct is_color_type : std::false_type {};
+
+    /// is const Color<...> a Color<...>
+    template <typename T_Value, std::array t_channels, std::intmax_t t_alpha_channel>
+    struct is_color_type<const Color<T_Value, t_channels, t_alpha_channel>>: std::true_type {};
+
+    /// is Color<...> a Color<...>
+    template <typename T_Value, std::array t_channels, std::intmax_t t_alpha_channel>
+    struct is_color_type<Color<T_Value, t_channels, t_alpha_channel>>: std::true_type {};
+    
+    /// concept matching any Color<...>.
+    template <typename T_Type>
+    concept ColorType = is_color_type<T_Type>::value;
 
     /// grayscale 4 bit, stored on LSB of 8 bits.
-    struct GS4 : public ColorBase<std::uint8_t, {
-        .channel_size = {4},
-    }>
-    {
-
-        constexpr GS4() = default;
-
-        constexpr GS4(std::uint8_t p_gs) : ColorBase{
-            utils::setBits<4, 4>(p_gs)
-        } {}
-
-        constexpr operator std::uint8_t() const { return value; }
-        constexpr operator GS4A1() const;
-
-        constexpr auto gs() const { return utils::getBits<4, 4>(value); }
-    };
-
-
+    using GS4 = Color<std::uint8_t, {4u}>;
     /// grayscale 4 bit, alpha 1 bit, stored on LSB of 8 bits.
-    struct GS4A1 : public ColorBase<std::uint8_t, {
-        .channel_size = {4, 1},
-        .alpha_channel = 1,
-    }>
-    {
-        constexpr GS4A1() = default;
-
-        constexpr GS4A1(std::uint8_t p_gs, std::uint8_t p_a) : ColorBase{static_cast<uint8_t>(
-            utils::setBits<5, 4>(p_gs) |
-            utils::setBits<1, 1>(p_a)
-        )}{}
-
-        constexpr operator std::uint8_t() const { return value; }
-        constexpr operator GS4() const;
-
-        constexpr auto gs() const { return utils::getBits<5, 4>(value); }
-        constexpr auto a() const { return utils::getBits<1, 1>(value); }
-    };
-
-    
+    using GS4A1 = Color<std::uint8_t, {4u, 1u}, 1>;
     /// red 5 bit, green 6 bit, blue 5 bit.
-    struct R5G6B5 : public ColorBase<std::uint16_t, {
-        .channel_size = {5, 6, 5},
-    }>
-    {
-        constexpr R5G6B5() = default;
-        constexpr R5G6B5(std::uint16_t p_r, std::uint16_t p_g, std::uint16_t p_b) : ColorBase{static_cast<uint16_t>(
-            utils::setBits<16, 5>(p_r)  |
-            utils::setBits<11, 6>(p_g) |
-            utils::setBits<5, 5>(p_b) 
-        )}{}
-
-        constexpr operator std::uint16_t() const { return value; }
-        constexpr operator R5G5B5A1() const;
-
-        constexpr auto r() const { return utils::getBits<16, 5>(value); }
-        constexpr auto g() const { return utils::getBits<11, 6>(value); }
-        constexpr auto b() const { return utils::getBits<5, 5>(value); }
-    };
-
-
+    using R5G6B5 =  Color<std::uint16_t, {5u, 6u, 5u}>;
     /// red 5 bit, green 5 bit, blue 5 bit, alpha 1 bit.
-    struct R5G5B5A1 : public ColorBase<std::uint16_t, {
-        .channel_size = {5, 5, 5, 1},
-        .alpha_channel = 3,
-    }>
-    {
-        constexpr R5G5B5A1() = default;
-        constexpr R5G5B5A1(std::uint16_t p_r, std::uint16_t p_g, std::uint16_t p_b, std::uint16_t p_a) : ColorBase{static_cast<uint16_t>(
-            utils::setBits<16, 5>(p_r) |
-            utils::setBits<11, 5>(p_g) |
-            utils::setBits<6, 5>(p_b) |
-            utils::setBits<1, 1>(p_a)
-        )}{}
-
-        constexpr operator std::uint16_t() const { return value; }
-        constexpr operator R5G6B5() const;
-
-        constexpr auto r() const { return utils::getBits<16, 5>(value); }
-        constexpr auto g() const { return utils::getBits<11, 5>(value); }
-        constexpr auto b() const { return utils::getBits<6, 5>(value); }
-        constexpr auto a() const { return utils::getBits<1, 1>(value); }
-    };
-    
-    // conversions
-
-    //
-    
-    inline constexpr GS4::operator GS4A1() const
-    {
-        return {gs(), 1};
-    }
-
-    inline constexpr GS4A1::operator GS4() const
-    {
-        return {gs()};
-    }
-    
-    inline constexpr R5G6B5::operator R5G5B5A1() const
-    {
-        return {
-            r(),
-            static_cast<uint16_t>((g() >> 1)),
-            b(),
-            1,
-        };
-    }
-
-    inline constexpr R5G5B5A1::operator R5G6B5() const
-    {
-        return {
-            r(),
-            static_cast<uint16_t>((g() << 1) | utils::getBits<1, 1>(g())),
-            b(),
-        };
-    }
+    using R5G5B5A1 = Color<std::uint16_t, {5u, 5u, 5u, 1u}, 3>;
 
 } // namespace picon::graphics

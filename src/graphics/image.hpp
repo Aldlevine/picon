@@ -10,7 +10,7 @@
 namespace picon::graphics {
 
     /// owning container of image data.
-    template <color::Color T_Format, std::size_t t_width, std::size_t t_height>
+    template <color::ColorType T_Format, std::size_t t_width, std::size_t t_height>
     struct ImageData
     {
         using Format = T_Format;
@@ -40,7 +40,7 @@ namespace picon::graphics {
 
 
     /// non-owning view of image data, runtime size.
-    template <color::Color T_Format>
+    template <color::ColorType T_Format>
     struct Image
     {
         using Format = T_Format;

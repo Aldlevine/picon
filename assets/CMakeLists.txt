@@ -18,7 +18,7 @@ target_include_directories(image_data PUBLIC
 )
 
 target_link_libraries(image_data
-  hardware_dma
+  hardware_interp
   pico_stdlib
 )
 
@@ -35,7 +35,10 @@ add_custom_command(
     python ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/../tools/image_importer
     -i ${CMAKE_CURRENT_LIST_DIR}/images
     -o ${CMAKE_CURRENT_BINARY_DIR}/includes/assets
+    # -f GS4
     -f GS4A1
+    # -f R5G5B5A1
+    # -f R5G6B5
   DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/../tools/image_importer/__main__.py
     ${IMAGES}

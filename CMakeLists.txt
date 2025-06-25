@@ -32,6 +32,7 @@ target_compile_options(pico_game PRIVATE -fPIC)
 target_link_libraries(pico_game PRIVATE
         hardware_dma
         hardware_flash
+        hardware_interp
         hardware_pio
         hardware_spi
         pico_rand
