@@ -1,127 +1,180 @@
 #pragma once
 
 #include "utils/bit_utils.hpp"
-
-#include <hardware/interp.h>
+#include "utils/traits.hpp"
 
 #include <array>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 
 namespace picon::graphics::color
 {
-    
-    /// Color type which holds the configured color channels in a single T_Value.
-    template <typename T_Value, std::array t_channels, std::intmax_t t_alpha_channel = -1>
+    struct Channel
+    {
+        std::size_t size;
+        std::size_t offset{0};
+    };
+
+
+    struct R: public Channel{};
+    struct G: public Channel{};
+    struct B: public Channel{};
+    struct A: public Channel{};
+    struct L: public Channel{};
+
+
+    template <typename T_Type>
+    concept ChannelType = std::is_base_of_v<Channel, std::remove_cvref_t<T_Type>>;
+
+    template <typename T_Channel, typename T_Type>
+    concept ChannelOfType = 
+        std::is_base_of_v<Channel, std::remove_cvref_t<T_Channel>> &&
+        std::is_base_of_v<T_Channel, std::remove_cvref_t<T_Type>>;
+
+    template <auto... t_channels>
+    concept AllValidChannels = (ChannelType<decltype(t_channels)> && ... && true);
+
+    template <auto... t_channels>
+    concept AllUniqueChannels = utils::unique_types<decltype(t_channels)...>;
+
+    template <typename T_Value, auto... t_channels>
+    concept ValueFitsChannels = ((t_channels.size + t_channels.offset) + ... + 0) <= sizeof(T_Value) * CHAR_BIT;
+
+
+    template <typename T_Value, auto... t_channels>
+    requires(
+        AllValidChannels<t_channels...> &&
+        AllUniqueChannels<t_channels...> &&
+        ValueFitsChannels<T_Value, t_channels...>
+    )
     struct Color
     {
-        /// channels and their sizes.
-        static constexpr auto channels{t_channels};
+        using Value = T_Value;
 
-        /// which channel is alpha (-1 if none).
-        static constexpr auto alpha_channel{t_alpha_channel};
-
-        /// number of alpha channels (0 or 1).
-        static constexpr auto has_alpha_channel = alpha_channel >= 0;
-
-        /// number of channels.
-        static constexpr auto num_channels = channels.size();
-
-        /// number of color channels.
-        static constexpr auto num_color_channels = num_channels - has_alpha_channel;
-
-        /// number of bits in alpha channel.
-        static constexpr auto alpha_bits = alpha_channel == -1 ? 0 : channels[alpha_channel];
-
-        /// which raw channel is color channel at index
-        template <std::size_t t_channel>
-        static constexpr auto color_channel =
-            has_alpha_channel && t_channel > alpha_channel ?
-                t_channel + 1 :
-                t_channel;
-        
-        /// size of color channel
-        template <std::size_t t_channel>
-        static constexpr auto color_bits = channels[color_channel<t_channel>];
-
-        /// bit offset of given channel within value.
-        template <std::size_t t_channel>
-        static constexpr auto channel_offset = [](){
-            static_assert(t_channel <= num_channels);
-
-            std::size_t result{0};
-            for (std::size_t i = num_channels; i > t_channel; --i)
-            {
-                result += channels[i - 1];
-            }
-            return result;
-        }();
-
-        /// underlying value.
         T_Value value{};
 
-        /// default construct to 0.
-        constexpr Color() = default;
+        /// total number of channels.
+        constexpr static std::size_t num_channels = sizeof...(t_channels);
 
-        // construct with all components.
+        /// whether or not color has the given channel type.
+        template <ChannelType T_Channel>
+        constexpr static bool has_channel
+        {
+            (ChannelOfType<T_Channel, decltype(t_channels)> || ... || false)
+        };
+
+        /// index for the given channel type.
+        template <ChannelType T_Channel>
+        requires((has_channel<T_Channel>))
+        constexpr static auto channel_index
+        {
+            []() -> std::size_t
+            {
+                constexpr std::array is_type{ ChannelOfType<T_Channel, decltype(t_channels)>... };
+                for (std::size_t i = 0; i < is_type.size(); ++i)
+                {
+                    if (is_type[i]) { return i; }
+                }
+                return -1;
+            }()
+        };
+        
+        /// get channel at index.
+        template <std::size_t t_index>
+        requires((t_index < num_channels))
+        constexpr static auto channel_at         {
+            []() -> std::tuple_element_t<t_index, std::tuple<decltype(t_channels)...>>
+            {
+                constexpr std::array channel_sizes{ t_channels.size ... };
+                constexpr std::array channel_offsets{ t_channels.offset ... };
+                std::size_t offset = 0;
+                for (std::intmax_t i = num_channels - 1; i >= t_index; --i)
+                {
+                    offset += channel_sizes[i] + channel_offsets[i];
+                }
+                constexpr auto raw_result = std::get<t_index>(std::tuple{t_channels...});
+                return { raw_result.size, offset };
+            }()
+        };
+
+
+        /// get channel for channel type.
+        template <ChannelType T_Channel>
+        requires((has_channel<T_Channel>))
+        constexpr static auto channel
+        {
+            channel_at<channel_index<T_Channel>>
+        };
+
+        /// default construct to 0.
+        Color() = default;
+        
+        /// construct with all components.
         template <typename... T_Args>
         requires(sizeof...(T_Args) == num_channels)
         constexpr Color(T_Args... p_args)
         {
             value = [&]<std::size_t... t_i>(std::index_sequence<t_i...>) {
-                return (utils::setBits<channel_offset<t_i>, channels[t_i]>(p_args) | ... | 0);
-            }(std::make_index_sequence<sizeof...(T_Args)>());
+                return (utils::setBits<channel_at<t_i>.offset, channel_at<t_i>.size>(p_args) | ... | 0);
+            }(std::index_sequence_for<T_Args...>{});
         }
 
-        /// get a given channel.
-        template <std::size_t t_channel>
-        constexpr auto get() const
+        /// get value of given channel.
+        template <ChannelType T_Channel>
+        requires(has_channel<T_Channel>)
+        constexpr T_Value get() const
         {
-            return utils::getBits<channel_offset<t_channel>, channels[t_channel]>(value);
+            return utils::getBits<channel<T_Channel>.offset, channel<T_Channel>.size>(value);
         }
-
-        /// get a given color channel.
-        template <std::size_t t_channel>
-        constexpr auto getColor() const
-        {
-            return get<color_channel<t_channel>>();
-        }
-
-        /// get alpha channel.
-        constexpr auto getAlpha() const
-        {
-            return get<alpha_channel>();
-        }
-        
-        /// convert to underlying value.
-        constexpr operator T_Value() const { return value; }
     };
 
-    /// is T_Type a Color<...>
-    template <typename T_Type>
-    struct is_color_type : std::false_type {};
 
-    /// is const Color<...> a Color<...>
-    template <typename T_Value, std::array t_channels, std::intmax_t t_alpha_channel>
-    struct is_color_type<const Color<T_Value, t_channels, t_alpha_channel>>: std::true_type {};
-
-    /// is Color<...> a Color<...>
-    template <typename T_Value, std::array t_channels, std::intmax_t t_alpha_channel>
-    struct is_color_type<Color<T_Value, t_channels, t_alpha_channel>>: std::true_type {};
-    
     /// concept matching any Color<...>.
     template <typename T_Type>
-    concept ColorType = is_color_type<T_Type>::value;
+    concept ColorType = requires(T_Type& t)
+    {
+        { []<typename T_Value, auto... t_channels>(Color<T_Value, t_channels...>){}(t) };
+    };
 
-    /// grayscale 4 bit, stored on LSB of 8 bits.
-    using GS4 = Color<std::uint8_t, {4u}>;
-    /// grayscale 4 bit, alpha 1 bit, stored on LSB of 8 bits.
-    using GS4A1 = Color<std::uint8_t, {4u, 1u}, 1>;
-    /// red 5 bit, green 6 bit, blue 5 bit.
-    using R5G6B5 =  Color<std::uint16_t, {5u, 6u, 5u}>;
-    /// red 5 bit, green 5 bit, blue 5 bit, alpha 1 bit.
-    using R5G5B5A1 = Color<std::uint16_t, {5u, 5u, 5u, 1u}, 3>;
+    
+    using GS4 = Color<std::uint8_t, L{4}>;
+    using GS4A1 = Color<std::uint8_t, L{4}, A{1}>;
+    using R5G6B5 = Color<std::uint16_t, R{5}, G{6}, B{5}>;
+    using R5G5B5A1 = Color<std::uint16_t, R{5}, G{5}, B{5}, A{1}>;
 
-} // namespace picon::graphics
+
+    static_assert(R5G5B5A1{1, 2, 3, 1}.get<R>() == 1);
+    static_assert(R5G5B5A1{1, 2, 3, 1}.get<G>() == 2);
+    static_assert(R5G5B5A1{1, 2, 3, 1}.get<B>() == 3);
+    static_assert(R5G5B5A1{1, 2, 3, 1}.get<A>() == 1);
+    
+    static_assert(!R5G5B5A1::has_channel<L>);
+    static_assert(R5G5B5A1::has_channel<R>);
+    static_assert(R5G5B5A1::has_channel<G>);
+    static_assert(R5G5B5A1::has_channel<B>);
+    static_assert(R5G5B5A1::has_channel<A>);
+
+    static_assert(R5G5B5A1::channel<R>.size == 5);
+    static_assert(R5G5B5A1::channel<G>.size == 5);
+    static_assert(R5G5B5A1::channel<B>.size == 5);
+    static_assert(R5G5B5A1::channel<A>.size == 1);
+
+    static_assert(R5G5B5A1::channel<R>.offset == 16);
+    static_assert(R5G5B5A1::channel<G>.offset == 11);
+    static_assert(R5G5B5A1::channel<B>.offset == 6);
+    static_assert(R5G5B5A1::channel<A>.offset == 1);
+
+    static_assert(GS4::has_channel<L>);
+    static_assert(!GS4::has_channel<R>);
+    static_assert(!GS4::has_channel<G>);
+    static_assert(!GS4::has_channel<B>);
+    static_assert(!GS4::has_channel<A>);
+
+    static_assert(GS4::channel<L>.size == 4);
+    static_assert(GS4::channel<L>.offset == 4);
+
+} // namespace picon::graphics::color

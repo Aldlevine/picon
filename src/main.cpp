@@ -102,7 +102,7 @@ void displayTick(std::uint64_t p_delta)
 {
     auto fb = display.getBackBuffer();
 
-    graphics::fn::fill(fb, graphics::color::GS4(0x00));
+    graphics::fn::fill(fb, graphics::color::GS4{0x00});
 
     bg_offset_x += p_delta * bg_speed_x;
     bg_offset_y += p_delta * bg_speed_y;
@@ -166,6 +166,9 @@ void displayTick(std::uint64_t p_delta)
             }
         }
     }
+
+    graphics::fn::fillRect(fb, 120, 24, 16, 16, graphics::color::GS4{0b1000});
+    // graphics::fn::fillRect(fb, 120 + 16, 24, 16, 16, graphics::color::R5G5B5A1{15, 15, 15, 1});
 
     display.swapBuffers();
 }

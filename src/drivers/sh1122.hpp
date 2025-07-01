@@ -121,10 +121,10 @@ namespace picon::drivers
             deselectDevice();
             selectDevice();
             
-            setCmdMode();
-            writeCmd(+SH1122Commands::set_row_addr, 0x00);
-            writeCmd(+SH1122Commands::set_lower_column_addr, +SH1122Commands::set_higher_column_addr);
-            setDataMode();
+            // setCmdMode();
+            // writeCmd(+SH1122Commands::set_row_addr, 0x00);
+            // writeCmd(+SH1122Commands::set_lower_column_addr, +SH1122Commands::set_higher_column_addr);
+            // setDataMode();
 
             const auto &back_buffer = getBackBuffer();
             front_buffer_idx = (front_buffer_idx + 1) % frame_buffers.size();
@@ -148,7 +148,7 @@ namespace picon::drivers
         {
             pio_sm_set_enabled(pio, pio_sm, false);
             pio_sm_set_wrap(pio, pio_sm, pio_offset + pio_command_start, pio_offset + pio_command_end);
-            pio->sm[pio_sm].instr = pio_offset + 0;
+            pio->sm[pio_sm].instr = pio_offset + pio_command_start;
             pio_sm_set_enabled(pio, pio_sm, true);
             gpio_put(dc, 0);
         }
@@ -157,7 +157,7 @@ namespace picon::drivers
         {
             pio_sm_set_enabled(pio, pio_sm, false);
             pio_sm_set_wrap(pio, pio_sm, pio_offset + pio_data_start, pio_offset + pio_data_end);
-            pio->sm[pio_sm].instr = pio_offset + 4;
+            pio->sm[pio_sm].instr = pio_offset + pio_data_start;
             pio_sm_set_enabled(pio, pio_sm, true);
             gpio_put(dc, 1);
         }
@@ -201,6 +201,8 @@ namespace picon::drivers
             writeCmd(+SH1122Commands::display_all_on_resume);
             writeCmd(+SH1122Commands::normal_display);
             writeCmd(+SH1122Commands::display_on);
+
+            setDataMode();
 
             deselectDevice();
         }
@@ -278,13 +280,15 @@ namespace picon::drivers
             auto config{pio_get_default_sm_config()};
 
             sm_config_set_wrap(&config, pio_offset + pio_command_start, pio_offset + pio_command_end);
+            // sm_config_set_wrap(&config, pio_offset + pio_data_start, pio_offset + pio_data_end);
 
             sm_config_set_sideset(&config, 1, false, false);
             sm_config_set_out_shift(&config, false, true, 8);
             sm_config_set_in_shift(&config, false, false, 8);
-            // sm_config_set_clkdiv_int_frac8(&config, 8, 0);
+            // sm_config_set_clkdiv_int_frac8(&config, 5, 0);
             // sm_config_set_clkdiv_int_frac8(&config, 4, 0);
             sm_config_set_clkdiv_int_frac8(&config, 3, 0);
+            // sm_config_set_clkdiv_int_frac8(&config, 2, 0);
 
             sm_config_set_out_pins(&config, mosi, 1);
             sm_config_set_sideset_pins(&config, sck);
@@ -295,6 +299,7 @@ namespace picon::drivers
             pio_gpio_init(pio, sck);
 
             pio_sm_init(pio, pio_sm, pio_offset, &config);
+
             pio_sm_set_enabled(pio, pio_sm, true);
         }
 

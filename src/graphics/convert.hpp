@@ -3,199 +3,299 @@
 #include "color.hpp"
 #include "utils/bit_utils.hpp"
 
+#include <hardware/interp.h>
+
+#include <cstdint>
 #include <cstddef>
-// #include <tuple>
-#include <utility>
 
 namespace picon::graphics::color
 {
-    // template <std::size_t t_color_channels>
-    // using ChannelReduceWeight = std::array<std::size_t, t_color_channels>;
+    /// the number on non-alpha color channels in a given color.
+    template <ColorType T_Color>
+    inline constexpr std::size_t num_color_channels =
+        T_Color::num_channels - T_Color::template has_channel<A>;
 
-    // namespace channel_reduce
-    // {
-    //     template <std::size_t t_color_channels>
-    //     constexpr auto uniform = []<std::size_t... t_i>(std::index_sequence<t_i...>){
-    //         return ChannelReduceWeight<t_color_channels>{(std::ignore = t_i, 1)...};
-    //     }(std::make_index_sequence<t_color_channels>());
+    static_assert(num_color_channels<GS4> == 1);
+    static_assert(num_color_channels<GS4A1> == 1);
+    static_assert(num_color_channels<R5G6B5> == 3);
+    static_assert(num_color_channels<R5G5B5A1> == 3);
 
-    //     constexpr ChannelReduceWeight<3> itu_rec_601 = {299, 587, 114};
-    // }
+    /// whether two given colors have the same set of color channels.
+    /// channels can be in any order and any size.
+    /// neither, one, or both colors may have alpha channel.
+    template <ColorType T_DstColor, ColorType T_SrcColor>
+    inline constexpr bool same_set_color_channels =
+        num_color_channels<T_DstColor> == num_color_channels<T_SrcColor> &&
+        []<typename T_Value, auto... t_channels>(Color<T_Value, t_channels...>){
+            return ((
+                ChannelOfType<A, decltype(t_channels)> ||
+                T_SrcColor::template has_channel<decltype(t_channels)>
+            ) && ... && true);
+        }(T_DstColor{});
+
+    static_assert(same_set_color_channels<GS4, Color<std::uint16_t, L{16}>>);
+    static_assert(!same_set_color_channels<GS4, Color<std::uint16_t, R{16}>>);
+
+    static_assert(same_set_color_channels<GS4, GS4A1>);
+    static_assert(!same_set_color_channels<GS4, R5G6B5>);
+    static_assert(!same_set_color_channels<GS4, R5G5B5A1>);
+
+    static_assert(same_set_color_channels<GS4A1, GS4>);
+    static_assert(!same_set_color_channels<GS4A1, R5G6B5>);
+    static_assert(!same_set_color_channels<GS4A1, R5G5B5A1>);
+
+    static_assert(same_set_color_channels<R5G6B5, R5G6B5>);
+    static_assert(!same_set_color_channels<R5G6B5, GS4>);
+    static_assert(!same_set_color_channels<R5G6B5, GS4A1>);
+
+    static_assert(same_set_color_channels<R5G5B5A1, R5G6B5>);
+    static_assert(!same_set_color_channels<R5G5B5A1, GS4>);
+    static_assert(!same_set_color_channels<R5G5B5A1, GS4A1>);
+
+    static_assert(same_set_color_channels<R5G5B5A1, Color<std::uint32_t, A{8}, B{8}, G{8}, R{8}>>);
     
-    /// convert from color to same color.
-    template <ColorType T_DstColor, ColorType T_SrcColor>
-    requires(
-        std::same_as<std::remove_cvref_t<T_DstColor>, std::remove_cvref_t<T_SrcColor>>
-    )
-    constexpr T_DstColor convert(T_SrcColor p_src)
-    {
-        return p_src;
-    }
-
-
-    /// convert to / from same number of color channels.
+    /// convert between colors with the same set of color channels.
     template<ColorType T_DstColor, ColorType T_SrcColor>
-    requires(
-        !std::same_as<std::remove_cvref_t<T_DstColor>, std::remove_cvref_t<T_SrcColor>> &&
-        T_DstColor::num_color_channels == T_SrcColor::num_color_channels
-    )
+    requires(same_set_color_channels<T_DstColor, T_SrcColor>)
     inline constexpr T_DstColor convert(T_SrcColor p_src)
     {
-        if constexpr (!T_DstColor::has_alpha_channel)
+        if constexpr (T_DstColor::template has_channel<A> && !T_SrcColor::template has_channel<A>)
         {
-            return [&]<std::size_t... t_i>(std::index_sequence<t_i...>)
+            return [&]<typename T_Value, auto... t_channels>(Color<T_Value, t_channels...>) -> T_DstColor
             {
-                return T_DstColor{
-                    (utils::resizeBits<
-                        T_DstColor::template color_bits<t_i>,
-                        T_SrcColor::template color_bits<t_i>
-                    >(p_src.template getColor<t_i>()))...,
+                return {
+                    [&](){
+                        if constexpr (ChannelOfType<A, decltype(t_channels)>)
+                        {
+                            return utils::bits<t_channels.size>;
+                        }
+                        else
+                        {
+                            return utils::resizeBits<
+                                T_DstColor::template channel<decltype(t_channels)>.size,
+                                T_SrcColor::template channel<decltype(t_channels)>.size
+                            >(p_src.template get<decltype(t_channels)>());
+                        }
+                    }()
+                    ...,
                 };
-            }(std::make_index_sequence<T_DstColor::num_color_channels>());
+            }(T_DstColor{});
         }
-
-        else if (!T_SrcColor::has_alpha_channel == 0)
+        else 
         {
-            return [&]<std::size_t... t_i>(std::index_sequence<t_i...>)
+            return [&]<typename T_Value, auto... t_channels>(Color<T_Value, t_channels...>) -> T_DstColor
             {
-                return T_DstColor{
+                return {
                     (utils::resizeBits<
-                        T_DstColor::template color_bits<t_i>,
-                        T_SrcColor::template color_bits<t_i>
-                    >(p_src.template getColor<t_i>()))...,
-                    utils::bits<T_DstColor::alpha_bits>,
+                        T_DstColor::template channel<decltype(t_channels)>.size,
+                        T_SrcColor::template channel<decltype(t_channels)>.size
+                    >(p_src.template get<decltype(t_channels)>()))
+                    ...,
                 };
-            }(std::make_index_sequence<T_DstColor::num_color_channels>());
-        }
-
-        else if (T_SrcColor::has_alpha_channel)
-        {
-            return [&]<std::size_t... t_i>(std::index_sequence<t_i...>)
-            {
-                return T_DstColor{
-                    (utils::resizeBits<
-                        T_DstColor::template color_bits<t_i>,
-                        T_SrcColor::template color_bits<t_i>
-                    >(p_src.template getColor<t_i>()))...,
-                    utils::resizeBits<
-                        T_DstColor::alpha_bits,
-                        T_SrcColor::alpha_bits
-                    >(p_src.getAlpha()),
-                };
-            }(std::make_index_sequence<T_DstColor::num_color_channels>());
-        }
-    }
-
-
-    /// convert from gs to 2+ color channels.
-    template <ColorType T_DstColor, ColorType T_SrcColor>
-
-    requires(
-        T_DstColor::num_color_channels >= 2 &&
-        T_SrcColor::num_color_channels == 1
-    )
-    inline constexpr T_DstColor convert(T_SrcColor p_src)
-    {
-        if constexpr (!T_DstColor::has_alpha_channel)
-        {
-            return [&]<std::size_t... t_i>(std::index_sequence<t_i...>)
-            {
-                return T_DstColor{
-                    (utils::resizeBits<
-                        T_DstColor::template color_bits<t_i>,
-                        T_SrcColor::template color_bits<0>
-                    >(p_src.template getColor<0>()))...,
-                };
-            }(std::make_index_sequence<T_DstColor::num_color_channels>());
-        }
-
-        else if (!T_SrcColor::has_alpha_channel)
-        {
-            return [&]<std::size_t... t_i>(std::index_sequence<t_i...>)
-            {
-                return T_DstColor{
-                    (utils::resizeBits<
-                        T_DstColor::template color_bits<t_i>,
-                        T_SrcColor::template color_bits<0>
-                    >(p_src.template getColor<0>()))...,
-                    utils::bits<T_DstColor::alpha_bits>,
-                };
-            }(std::make_index_sequence<T_DstColor::num_color_channels>());
-        }
-
-        else if (T_SrcColor::has_alpha_channels)
-        {
-            return [&]<std::size_t... t_i>(std::index_sequence<t_i...>)
-            {
-                return T_DstColor{
-                    (utils::resizeBits<
-                        T_DstColor::template color_bits<t_i>,
-                        T_SrcColor::template color_bits<0>
-                    >(p_src.template getColor<0>()))...,
-                    utils::resizeBits<
-                        T_DstColor::alpha_bits,
-                        T_SrcColor::alpha_bits
-                    >(p_src.getAlpha()),
-                };
-            }(std::make_index_sequence<T_DstColor::num_color_channels>());
+            }(T_DstColor{});
         }
     }
     
-    /// convert from rgb to gs.
-    /// uses interp0 lane 0.
-    /// TODO: this should work for color formats with a different order
+    // same colors, from A to Non-A
+    static_assert(convert<GS4, GS4A1>({3, 1}).get<L>() == 3);
+    static_assert(convert<R5G6B5, R5G5B5A1>({3, 4, 5, 1}).get<R>() == 3);
+    static_assert(convert<R5G6B5, R5G5B5A1>({3, 4, 5, 1}).get<G>() == 8);
+    static_assert(convert<R5G6B5, R5G5B5A1>({3, 4, 5, 1}).get<B>() == 5);
+
+    // same colors, from A to A
+    static_assert(convert<GS4A1, GS4A1>({3, 1}).get<L>() == 3);
+    static_assert(convert<GS4A1, GS4A1>({3, 1}).get<A>() == 1);
+    static_assert(convert<R5G5B5A1, R5G5B5A1>({3, 4, 5, 1}).get<R>() == 3);
+    static_assert(convert<R5G5B5A1, R5G5B5A1>({3, 4, 5, 1}).get<G>() == 4);
+    static_assert(convert<R5G5B5A1, R5G5B5A1>({3, 4, 5, 1}).get<B>() == 5);
+    static_assert(convert<R5G5B5A1, R5G5B5A1>({3, 4, 5, 1}).get<A>() == 1);
+
+    // same colors, from Non-A to A
+    static_assert(convert<GS4A1, GS4>({3}).get<L>() == 3);
+    static_assert(convert<GS4A1, GS4>({3}).get<A>() == 1);
+    static_assert(convert<R5G5B5A1, R5G6B5>({3, 4, 5}).get<R>() == 3);
+    static_assert(convert<R5G5B5A1, R5G6B5>({3, 4, 5}).get<G>() == 2);
+    static_assert(convert<R5G5B5A1, R5G6B5>({3, 4, 5}).get<B>() == 5);
+    static_assert(convert<R5G5B5A1, R5G6B5>({3, 4, 5}).get<A>() == 1);
+
+    /// convert from RGB(A) to L(A).
+    /// follows ITU Rec. 601.
+    /// https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.601-7-201103-I!!PDF-E.pdf : Section 2.5.1.
+    /// on rpi pico uses interp0 lane0 for blending color channels.
+    /// TODO: only use interp with pico SDK.
     template<ColorType T_DstColor, ColorType T_SrcColor>
     requires(
-        T_DstColor::num_color_channels == 1 &&
-        T_SrcColor::num_color_channels == 3
+        num_color_channels<T_DstColor> == 1 &&
+        T_DstColor::template has_channel<L> &&
+        num_color_channels<T_SrcColor> == 3 &&
+        T_SrcColor::template has_channel<R> &&
+        T_SrcColor::template has_channel<G> &&
+        T_SrcColor::template has_channel<B> &&
+        T_SrcColor::template channel<R>.size <= 16 &&
+        T_SrcColor::template channel<G>.size <= 16 &&
+        T_SrcColor::template channel<B>.size <= 16
     )
     inline constexpr T_DstColor convert(T_SrcColor p_src)
     {
-        auto config = interp_default_config();
-        interp_config_set_blend(&config, true);
-        interp_set_config(interp0, 0, &config);
+        constexpr std::uint8_t r_coeff = utils::bits<8> * 299 / 1000;
+        constexpr std::uint8_t g_coeff = utils::bits<8> * 587 / 1000;
+        constexpr std::uint8_t b_coeff = utils::bits<8> * 114 / 1000;
+        // constexpr std::uint8_t r_coeff = utils::bits<8> * 300 / 1000;
+        // constexpr std::uint8_t g_coeff = utils::bits<8> * 590 / 1000;
+        // constexpr std::uint8_t b_coeff = utils::bits<8> * 110 / 1000;
 
-        interp0->accum[1] = utils::bits<8> * 3 / 10;
-        interp0->base01 = p_src.template get<0>();
-        interp0->accum[1] = utils::bits<8> * 59 / 100;
-        interp0->base01 = interp0->peek[1] << 16 | p_src.template get<1>();
-        interp0->accum[1] = utils::bits<8> * 11 / 100;
-        interp0->base01 = interp0->peek[1] << 16 | p_src.template get<2>();
-
-        if constexpr (!T_DstColor::has_alpha_channel)
+        typename T_SrcColor::Value l_value{};
+        if consteval
+        // if (true)
         {
-            return {
-                utils::resizeBits<
-                    T_DstColor::template color_bits<0>,
-                    T_SrcColor::template color_bits<0>
-                >(interp0->pop[1]),
-            };
+            const auto r = utils::resizeBits<16, T_SrcColor::template channel<R>.size>(p_src.template get<R>());
+            const auto g = utils::resizeBits<16, T_SrcColor::template channel<G>.size>(p_src.template get<G>());
+            const auto b = utils::resizeBits<16, T_SrcColor::template channel<B>.size>(p_src.template get<B>());
+
+            const auto r_w = r * r_coeff / utils::bits<8>;
+            const auto g_w = g * g_coeff / utils::bits<8>;
+            const auto b_w = b * b_coeff / utils::bits<8>;
+
+            l_value = utils::resizeBits<T_DstColor::template channel<L>.size, 16>(r_w + g_w + b_w);
+        }
+        else
+        {
+            auto config = interp_default_config();
+            interp_set_config(interp0, 1, &config);
+            interp_config_set_blend(&config, true);
+            interp_set_config(interp0, 0, &config);
+
+            if constexpr (
+                p_src.template channel<R>.size <= 16 &&
+                p_src.template channel<G>.size <= 16 &&
+                p_src.template channel<B>.size <= 16
+            ){
+                interp0->base[0] = 0;
+
+                interp0->accum[1] = r_coeff;
+                interp0->base[1] =
+                    utils::resizeBits<16, p_src.template channel<R>.size>(p_src.template get<R>());
+                l_value = interp0->peek[1];
+
+                interp0->accum[1] = g_coeff;
+                interp0->base[1] =
+                    utils::resizeBits<16, p_src.template channel<G>.size>(p_src.template get<G>());
+                l_value += interp0->peek[1];
+
+                interp0->accum[1] = b_coeff;
+                interp0->base[1] =
+                    utils::resizeBits<16, p_src.template channel<B>.size>(p_src.template get<B>());
+                l_value += interp0->peek[1];
+
+                l_value = utils::resizeBits<T_DstColor::template channel<L>.size, 16>(l_value);
+            }
         }
 
-        else if constexpr (!T_SrcColor::has_alpha_channel)
+        if constexpr (T_DstColor::template has_channel<A> && !T_SrcColor::template has_channel<A>)
         {
-            return {
-                utils::resizeBits<
-                    T_DstColor::template color_bits<0>,
-                    T_SrcColor::template color_bits<0>
-                >(interp0->pop[1]),
-                utils::bits<T_DstColor::alpha_bits>,
-            };
+            return [&]<typename T_Value, auto... t_channels>(Color<T_Value, t_channels...>) -> T_DstColor
+            {
+                return {
+                    [&](){
+                        if constexpr (ChannelOfType<A, decltype(t_channels)>)
+                        {
+                            return utils::bits<t_channels.size>;
+                        }
+                        else if constexpr (ChannelOfType<L, decltype(t_channels)>)
+                        {
+                            return l_value;
+                        }
+                    }()
+                    ...,
+                };
+            }(T_DstColor{});
+        }
+        else
+        {
+            return [&]<typename T_Value, auto... t_channels>(Color<T_Value, t_channels...>) -> T_DstColor
+            {
+                return {
+                    [&](){
+                        if constexpr (ChannelOfType<A, decltype(t_channels)>)
+                        {
+                            return utils::resizeBits<
+                                T_DstColor::template channel<decltype(t_channels)>.size,
+                                T_SrcColor::template channel<decltype(t_channels)>.size
+                            >(p_src.template get<decltype(t_channels)>());
+                        }
+                        else if constexpr (ChannelOfType<L, decltype(t_channels)>)
+                        {
+                            return l_value;
+                        }
+                    }()
+                    ...,
+                };
+            }(T_DstColor{});
         }
 
-        else if constexpr (T_SrcColor::has_alpha_channel)
-        {
-            return {
-                utils::resizeBits<
-                    T_DstColor::template color_bits<0>,
-                    T_SrcColor::template color_bits<0>
-                >(interp0->pop[1]),
-                utils::resizeBits<
-                    T_DstColor::alpha_bits,
-                    T_SrcColor::alpha_bits
-                >(p_src.getAlpha()()),
-            };
-        }
     }
 
+    // RGB to L
+    static_assert(convert<GS4, R5G6B5>({0, 0, 0}).get<L>() == 0);
+    static_assert(convert<GS4, R5G6B5>({4, 8, 4}).get<L>() == 2);
+    static_assert(convert<GS4, R5G6B5>({8, 16, 8}).get<L>() == 4);
+    static_assert(convert<GS4, R5G6B5>({12, 24, 12}).get<L>() == 6);
+    static_assert(convert<GS4, R5G6B5>({16, 32, 16}).get<L>() == 8);
+    static_assert(convert<GS4, R5G6B5>({20, 40, 20}).get<L>() == 10);
+    static_assert(convert<GS4, R5G6B5>({24, 48, 24}).get<L>() == 12);
+    static_assert(convert<GS4, R5G6B5>({28, 56, 28}).get<L>() == 14);
+    static_assert(convert<GS4, R5G6B5>({31, 63, 31}).get<L>() == 15);
+
+    // RGBA to L
+    static_assert(convert<GS4, R5G5B5A1>({0, 0, 0, 1}).get<L>() == 0);
+    static_assert(convert<GS4, R5G5B5A1>({4, 4, 4, 1}).get<L>() == 2);
+    static_assert(convert<GS4, R5G5B5A1>({8, 8, 8, 1}).get<L>() == 4);
+    static_assert(convert<GS4, R5G5B5A1>({12, 12, 12, 1}).get<L>() == 6);
+    static_assert(convert<GS4, R5G5B5A1>({16, 16, 16, 1}).get<L>() == 8);
+    static_assert(convert<GS4, R5G5B5A1>({20, 20, 20, 1}).get<L>() == 10);
+    static_assert(convert<GS4, R5G5B5A1>({24, 24, 24, 1}).get<L>() == 12);
+    static_assert(convert<GS4, R5G5B5A1>({28, 28, 28, 1}).get<L>() == 14);
+    static_assert(convert<GS4, R5G5B5A1>({31, 31, 31, 1}).get<L>() == 15);
+
+    // RGB to LA
+    static_assert(convert<GS4A1, R5G6B5>({0, 0, 0}).get<L>() == 0);
+    static_assert(convert<GS4A1, R5G6B5>({4, 8, 4}).get<L>() == 2);
+    static_assert(convert<GS4A1, R5G6B5>({8, 16, 8}).get<L>() == 4);
+    static_assert(convert<GS4A1, R5G6B5>({12, 24, 12}).get<L>() == 6);
+    static_assert(convert<GS4A1, R5G6B5>({16, 32, 16}).get<L>() == 8);
+    static_assert(convert<GS4A1, R5G6B5>({20, 40, 20}).get<L>() == 10);
+    static_assert(convert<GS4A1, R5G6B5>({24, 48, 24}).get<L>() == 12);
+    static_assert(convert<GS4A1, R5G6B5>({28, 56, 28}).get<L>() == 14);
+    static_assert(convert<GS4A1, R5G6B5>({31, 63, 31}).get<L>() == 15);
+    
+    static_assert(convert<GS4A1, R5G6B5>({0, 0, 0}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G6B5>({4, 8, 4}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G6B5>({8, 16, 8}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G6B5>({12, 24, 12}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G6B5>({16, 32, 16}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G6B5>({20, 40, 20}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G6B5>({24, 48, 24}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G6B5>({28, 56, 28}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G6B5>({31, 63, 31}).get<A>() == 1);
+
+    // RGBA to LA
+    static_assert(convert<GS4A1, R5G5B5A1>({0, 0, 0, 1}).get<L>() == 0);
+    static_assert(convert<GS4A1, R5G5B5A1>({4, 4, 4, 1}).get<L>() == 2);
+    static_assert(convert<GS4A1, R5G5B5A1>({8, 8, 8, 1}).get<L>() == 4);
+    static_assert(convert<GS4A1, R5G5B5A1>({12, 12, 12, 1}).get<L>() == 6);
+    static_assert(convert<GS4A1, R5G5B5A1>({16, 16, 16, 1}).get<L>() == 8);
+    static_assert(convert<GS4A1, R5G5B5A1>({20, 20, 20, 1}).get<L>() == 10);
+    static_assert(convert<GS4A1, R5G5B5A1>({24, 24, 24, 1}).get<L>() == 12);
+    static_assert(convert<GS4A1, R5G5B5A1>({28, 28, 28, 1}).get<L>() == 14);
+    static_assert(convert<GS4A1, R5G5B5A1>({31, 31, 31, 1}).get<L>() == 15);
+
+    static_assert(convert<GS4A1, R5G5B5A1>({0, 0, 0, 0}).get<A>() == 0);
+    static_assert(convert<GS4A1, R5G5B5A1>({4, 4, 4, 1}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G5B5A1>({8, 8, 8, 0}).get<A>() == 0);
+    static_assert(convert<GS4A1, R5G5B5A1>({12, 12, 12, 1}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G5B5A1>({16, 16, 16, 0}).get<A>() == 0);
+    static_assert(convert<GS4A1, R5G5B5A1>({20, 20, 20, 1}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G5B5A1>({24, 24, 24, 0}).get<A>() == 0);
+    static_assert(convert<GS4A1, R5G5B5A1>({28, 28, 28, 1}).get<A>() == 1);
+    static_assert(convert<GS4A1, R5G5B5A1>({31, 31, 31, 0}).get<A>() == 0);
 }

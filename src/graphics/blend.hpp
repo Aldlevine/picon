@@ -5,6 +5,14 @@
 
 namespace picon::graphics::color::blend
 {
+    template <typename T_BlendMode, typename T_DstColor, typename T_SrcColor>
+    concept BlendMode =
+        ColorType<T_DstColor> &&
+        ColorType<T_SrcColor> &&
+        requires(T_DstColor dst, T_SrcColor src, T_BlendMode blend)
+        {
+            { blend(dst, src) };
+        };
 
     constexpr struct None
     {
@@ -19,17 +27,17 @@ namespace picon::graphics::color::blend
     constexpr struct Alpha
     {
         template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat>
-        requires(T_SrcFormat::alpha_bits == 0)
+        requires(!T_SrcFormat::template has_channel<A>)
         constexpr static void operator()(T_DstFormat& r_dst, T_SrcFormat p_src)
         {
             None::operator()(r_dst, p_src);
         }
 
         template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat>
-        requires(T_SrcFormat::alpha_bits == 1)
+        requires(T_SrcFormat::template channel<A>.size == 1)
         constexpr static void operator()(T_DstFormat& r_dst, T_SrcFormat p_src)
         {
-            if (p_src.getAlpha() > 0) { r_dst = convert<T_DstFormat, T_SrcFormat>(p_src); }
+            if (p_src.template get<A>() > 0) { r_dst = convert<T_DstFormat, T_SrcFormat>(p_src); }
         }
     } alpha;
 
