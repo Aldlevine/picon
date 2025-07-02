@@ -1,0 +1,43 @@
+{
+    "version": 10,
+
+    "cmakeMinimumRequired": {"major": 4},
+
+    "configurePresets": [
+        {
+            "hidden": true,
+            "name": "Pico-Base",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "PICON_PLATFORM_PICO": true
+            }
+        },
+        {
+            "name": "Pico-Debug",
+            "inherits": ["Pico-Base"],
+            "binaryDir": "${sourceDir}/build/pico-debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "Pico-Release",
+            "inherits": ["Pico-Base"],
+            "binaryDir": "${sourceDir}/build/pico-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+
+    "buildPresets": [
+        {
+            "name": "Pico-Debug",
+            "configurePreset": "Pico-Debug"
+        },
+        {
+            "name": "Pico-Release",
+            "configurePreset": "Pico-Release"
+        }
+    ]
+}

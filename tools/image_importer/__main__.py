@@ -45,6 +45,8 @@ def main() -> None:
         images_namespace=typing.cast(str, args.images_namespace)
     )
 
+    os.makedirs(options.output_dir, exist_ok=True)
+
     generate_images_source(options)
 
 
