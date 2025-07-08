@@ -5,29 +5,17 @@
             "type": "cmake",
             "label": "CMake: build",
             "command": "build",
-            "targets": [
-                "pico_game"
-            ],
+            "targets": [ "picon" ],
             "group": "build",
-            "problemMatcher": [
-                "$gcc",
-                "$armcc5"
-            ],
-            "detail": "CMake template build task"
+            "problemMatcher": [ "$gcc", "$armcc5" ],
         },
         {
             "type": "cmake",
             "label": "CMake: clean rebuild",
             "command": "cleanRebuild",
-            "targets": [
-                "pico_game"
-            ],
+            "targets": [ "picon" ],
             "group": "build",
-            "problemMatcher": [
-                "$gcc",
-                "$armcc5"
-            ],
-            "detail": "CMake template clean rebuild task"
+            "problemMatcher": [ "$gcc", "$armcc5" ],
         },
         {
             "label": "Flash Binary",
@@ -37,7 +25,7 @@
                 "-f", "interface/cmsis-dap.cfg",
                 "-f", "target/rp2040.cfg",
                 "-c", "adapter speed 5000",
-                "-c", "program ${workspaceFolder}/build/pico_game.bin reset exit 0x10000000",
+                "-c", "program ${command:cmake.launchTargetPath} reset exit",
             ]
         },
     ]

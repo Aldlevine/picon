@@ -20,7 +20,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
         C_STANDARD 11
         CXX_STANDARD 23)
 
-target_compile_options(${PROJECT_NAME} PRIVATE -fPIC)
+# target_compile_options(${PROJECT_NAME} PRIVATE -fPIC)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         hardware_dma

@@ -2,6 +2,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug (Native)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${command:cmake.launchTargetPath}",
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "CMake: build",
+            "internalConsoleOptions": "openOnSessionStart",
+        },
+        {
             "name": "Debug (Pico + OpenOCD)",
             "cwd": "${workspaceFolder}",
             "executable": "${command:cmake.launchTargetPath}",
@@ -26,6 +35,6 @@
                 "load \"${command:cmake.launchTargetPath}\"",
             ],
             "preLaunchTask": "CMake: build",
-        }
+        },
     ]
 }

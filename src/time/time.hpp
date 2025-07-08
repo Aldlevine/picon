@@ -1,42 +1,26 @@
 #pragma once
 
-#include <hardware/timer.h>
-#include <pico/types.h>
-
 #include <cstdint>
+
+#if defined(PICON_PLATFORM_LINUX)
+#include <chrono>
+#elif defined(PICON_PLATFORM_PICO)
+#include <hardware/timer.h>
+#endif
 
 namespace picon::time
 {
 
-    template <std::uint64_t t_us_per_tick, auto t_callback>
-    struct RepeatingTimer
+    inline std::uint64_t getEpochTimeUs64()
+    #if defined(PICON_PLATFORM_LINUX)
     {
-        private:
-            constexpr static auto us_per_tick = t_us_per_tick;
-            constexpr static void (*callback)(std::uint64_t) = t_callback; 
-            static uint hw_alarm;
-
-        public:
-            static void init()
-            {
-                hw_alarm = hardware_alarm_claim_unused(true);
-                hardware_alarm_set_callback(hw_alarm, timer_callback);
-                timer_callback(hw_alarm);
-            }
-
-        private:
-            static void timer_callback(uint p_hw_alarm)
-            {
-                assert(hw_alarm == p_hw_alarm);
-
-                auto tick_start = time_us_64();
-                hardware_alarm_set_target(hw_alarm, from_us_since_boot(tick_start + us_per_tick));
-                callback(tick_start);
-            }
-    };
-
-    template <std::uint64_t t_us_per_tick, auto t_callback>
-    uint RepeatingTimer<t_us_per_tick, t_callback>::hw_alarm{};
+        return std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+    }
+    #elif defined(PICON_PLATFORM_PICO)
+    {
+        return time_us_64();
+    }
+    #endif
 
     struct DeltaTimer
     {
@@ -44,7 +28,7 @@ namespace picon::time
         std::uint64_t min_delta_us;
         
     private:
-        std::uint64_t last_tick_us{};
+        std::uint64_t last_tick_us{ getEpochTimeUs64() };
         std::uint64_t delta_us{};
         std::uint64_t delta_acc_us{};
         
@@ -53,7 +37,7 @@ namespace picon::time
 
         void tick()
         {
-            auto cur_tick {time_us_64()};
+            auto cur_tick { getEpochTimeUs64() };
             delta_acc_us += (cur_tick - last_tick_us);
             last_tick_us = cur_tick;
         }
@@ -67,6 +51,11 @@ namespace picon::time
                 return true;
             }
             return false;
+        }
+        
+        const std::uint64_t getDeltaLeft() const
+        {
+            return min_delta_us - delta_acc_us;
         }
 
         const std::uint64_t& getDelta() const
@@ -94,7 +83,7 @@ namespace picon::time
 
         void tick()
         {
-            auto cur_tick{time_us_64()};
+            auto cur_tick { getEpochTimeUs64() };
             delta_acc_us += (cur_tick - last_tick_us);
             last_tick_us = cur_tick;
         }
@@ -107,6 +96,11 @@ namespace picon::time
                 return true;
             }
             return false;
+        }
+
+        const std::uint64_t getDeltaLeft() const
+        {
+            return step_delta_us - delta_acc_us;
         }
 
         const std::uint64_t& getDelta() const

@@ -5,8 +5,9 @@
 #include "convert.hpp"
 #include "image.hpp"
 
+#include "utils/types.hpp"
+
 #include <algorithm>
-#include <cstring>
 
 namespace picon::graphics::fn
 {
@@ -52,18 +53,18 @@ namespace picon::graphics::fn
     /// returns true if dst dst rect is in view
     template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat>
     inline bool blitSafeSize(
-        const Image<T_DstFormat> p_dst, std::int64_t& r_dst_x, std::int64_t& r_dst_y,
-        const Image<T_SrcFormat> p_src, std::size_t& r_src_x, std::size_t& r_src_y, std::size_t& r_src_w, std::size_t& r_src_h
+        const Image<T_DstFormat> p_dst, utils::isize_t& r_dst_x, utils::isize_t& r_dst_y,
+        const Image<T_SrcFormat> p_src, utils::isize_t& r_src_x, utils::isize_t& r_src_y, utils::isize_t& r_src_w, utils::isize_t& r_src_h
     )
     {
         // completely left of image
         if (-r_dst_x > r_src_w) { return false; }
         // completely right of image
-        if (r_dst_x > p_dst.width) { return false; }
+        if (r_dst_x > static_cast<utils::isize_t>(p_dst.width)) { return false; }
         // completely above of image
         if (-r_dst_y > r_src_h) { return false; }
         // completely below of image
-        if (r_dst_y > p_dst.height) { return false; }
+        if (r_dst_y > static_cast<utils::isize_t>(p_dst.height)) { return false; }
         
 
         // left of image
@@ -75,7 +76,7 @@ namespace picon::graphics::fn
         }
 
         // right of image
-        if (r_dst_x + r_src_w > p_dst.width)
+        if (r_dst_x + r_src_w > static_cast<utils::isize_t>(p_dst.width))
         {
             r_src_w = p_dst.width - r_dst_x;
         }
@@ -89,7 +90,7 @@ namespace picon::graphics::fn
         }
 
         // below image
-        if (r_dst_y + r_src_h > p_dst.height)
+        if (r_dst_y + r_src_h > static_cast<utils::isize_t>(p_dst.height))
         {
             r_src_h = p_dst.height - r_dst_y;
         }
@@ -128,8 +129,8 @@ namespace picon::graphics::fn
         color::blend::BlendMode<T_DstFormat, T_SrcFormat> T_Blend=color::blend::None
     >
     inline void blitSafe(
-        Image<T_DstFormat> p_dst, std::int64_t p_dst_x, std::int64_t p_dst_y,
-        const Image<T_SrcFormat> p_src, std::size_t p_src_x, std::size_t p_src_y, std::size_t p_src_w, std::size_t p_src_h,
+        Image<T_DstFormat> p_dst, utils::isize_t p_dst_x, utils::isize_t p_dst_y,
+        const Image<T_SrcFormat> p_src, utils::isize_t p_src_x, utils::isize_t p_src_y, utils::isize_t p_src_w, utils::isize_t p_src_h,
         T_Blend p_blend={}
     )
     {
@@ -163,7 +164,7 @@ namespace picon::graphics::fn
         color::blend::BlendMode<T_DstFormat, T_SrcFormat> T_Blend=color::blend::None
     >
     inline void blitSafe(
-        Image<T_DstFormat> p_dst, std::int64_t p_dst_x, std::int64_t p_dst_y, const Image<T_SrcFormat> p_src,
+        Image<T_DstFormat> p_dst, utils::isize_t p_dst_x, utils::isize_t p_dst_y, const Image<T_SrcFormat> p_src,
         T_Blend p_blend={}
     )
     {
@@ -171,4 +172,4 @@ namespace picon::graphics::fn
     }
 
 
-} // picon::graphics
+} // namespace picon::graphics::fn

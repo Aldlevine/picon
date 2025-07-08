@@ -1,6 +1,7 @@
 #pragma once
 
 #include "point.hpp"
+
 #include <algorithm>
 #include <optional>
 

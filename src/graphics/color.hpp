@@ -3,13 +3,9 @@
 #include "utils/bit_utils.hpp"
 #include "utils/traits.hpp"
 
-#include <array>
 #include <climits>
-#include <cstddef>
 #include <cstdint>
 #include <tuple>
-#include <type_traits>
-#include <utility>
 
 namespace picon::graphics::color
 {
@@ -86,16 +82,15 @@ namespace picon::graphics::color
         /// get channel at index.
         template <std::size_t t_index>
         requires((t_index < num_channels))
-        constexpr static auto channel_at         {
+        constexpr static auto channel_at {
             []() -> std::tuple_element_t<t_index, std::tuple<decltype(t_channels)...>>
             {
                 constexpr std::array channel_sizes{ t_channels.size ... };
                 constexpr std::array channel_offsets{ t_channels.offset ... };
-                std::size_t offset = 0;
-                for (std::intmax_t i = num_channels - 1; i >= t_index; --i)
-                {
-                    offset += channel_sizes[i] + channel_offsets[i];
-                }
+                std::size_t offset = [&]<std::size_t... t_i>(std::index_sequence<t_i...>){
+                    return ((channel_sizes[t_i + t_index] + channel_offsets[t_i + t_index]) + ... + 0);
+                }(std::make_index_sequence<num_channels - t_index>());
+
                 constexpr auto raw_result = std::get<t_index>(std::tuple{t_channels...});
                 return { raw_result.size, offset };
             }()
@@ -112,15 +107,18 @@ namespace picon::graphics::color
 
         /// default construct to 0.
         Color() = default;
+
+        operator T_Value() const { return value; }
         
         /// construct with all components.
-        template <typename... T_Args>
+        template <std::convertible_to<Value>... T_Args>
         requires(sizeof...(T_Args) == num_channels)
         constexpr Color(T_Args... p_args)
         {
-            value = [&]<std::size_t... t_i>(std::index_sequence<t_i...>) {
-                return (utils::setBits<channel_at<t_i>.offset, channel_at<t_i>.size>(p_args) | ... | 0);
-            }(std::index_sequence_for<T_Args...>{});
+            value =
+                [&]<std::size_t... t_i>(std::index_sequence<t_i...>) {
+                    return (utils::setBits<channel_at<t_i>.offset, channel_at<t_i>.size>(p_args) | ... | 0);
+                }(std::index_sequence_for<T_Args...>{});
         }
 
         /// get value of given channel.

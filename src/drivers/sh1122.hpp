@@ -1,10 +1,8 @@
 #pragma once
 
+#if defined(PICON_PLATFORM_PICO)
 #include "graphics/image.hpp"
 
-#include <cstddef>
-#include <cstdint>
-#include <cstdio>
 #include <hardware/dma.h>
 #include <hardware/gpio.h>
 #include <hardware/pio.h>
@@ -16,6 +14,9 @@
 #include <pico/time.h>
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 
 namespace picon::drivers
 {
@@ -93,12 +94,19 @@ namespace picon::drivers
         uint pio_data_end{};
 
     public:
-        void init(PIO p_pio)
+        SH1122Driver(PIO p_pio): pio{p_pio} {}
+
+        void init()
         {
-            initSpiPio(p_pio);
+            initSpiPio(pio);
             initDma();
             initGpio();
             initDisplay();
+        }
+
+        void deinit()
+        {
+            // TODO: add proper deinit stuff
         }
 
         FrameBuffer& getFrontBuffer()
@@ -286,8 +294,8 @@ namespace picon::drivers
             sm_config_set_out_shift(&config, false, true, 8);
             sm_config_set_in_shift(&config, false, false, 8);
             // sm_config_set_clkdiv_int_frac8(&config, 5, 0);
-            // sm_config_set_clkdiv_int_frac8(&config, 4, 0);
-            sm_config_set_clkdiv_int_frac8(&config, 3, 0);
+            sm_config_set_clkdiv_int_frac8(&config, 4, 0);
+            // sm_config_set_clkdiv_int_frac8(&config, 3, 0);
             // sm_config_set_clkdiv_int_frac8(&config, 2, 0);
 
             sm_config_set_out_pins(&config, mosi, 1);
@@ -331,3 +339,5 @@ namespace picon::drivers
     };
 
 } // namespace picon::drivers
+
+#endif

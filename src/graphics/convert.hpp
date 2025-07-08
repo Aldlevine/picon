@@ -2,8 +2,11 @@
 
 #include "color.hpp"
 #include "utils/bit_utils.hpp"
+#include <type_traits>
 
+#ifdef PICON_PLATFORM_PICO
 #include <hardware/interp.h>
+#endif
 
 #include <cstdint>
 #include <cstddef>
@@ -74,7 +77,7 @@ namespace picon::graphics::color
                             return utils::resizeBits<
                                 T_DstColor::template channel<decltype(t_channels)>.size,
                                 T_SrcColor::template channel<decltype(t_channels)>.size
-                            >(p_src.template get<decltype(t_channels)>());
+                            >(static_cast<T_DstColor::Value>(p_src.template get<decltype(t_channels)>()));
                         }
                     }()
                     ...,
@@ -89,7 +92,7 @@ namespace picon::graphics::color
                     (utils::resizeBits<
                         T_DstColor::template channel<decltype(t_channels)>.size,
                         T_SrcColor::template channel<decltype(t_channels)>.size
-                    >(p_src.template get<decltype(t_channels)>()))
+                    >(static_cast<T_DstColor::Value>(p_src.template get<decltype(t_channels)>())))
                     ...,
                 };
             }(T_DstColor{});
@@ -118,11 +121,109 @@ namespace picon::graphics::color
     static_assert(convert<R5G5B5A1, R5G6B5>({3, 4, 5}).get<B>() == 5);
     static_assert(convert<R5G5B5A1, R5G6B5>({3, 4, 5}).get<A>() == 1);
 
+    /// convert from L(A) to RGB(A)
+    template<ColorType T_DstColor, ColorType T_SrcColor>
+    requires(
+        num_color_channels<T_DstColor> == 3 &&
+        T_DstColor::template has_channel<R> &&
+        T_DstColor::template has_channel<G> &&
+        T_DstColor::template has_channel<B> &&
+        num_color_channels<T_SrcColor> == 1 &&
+        T_SrcColor::template has_channel<L>
+    )
+    inline constexpr T_DstColor convert(T_SrcColor p_src)
+    {
+        if constexpr (T_DstColor::template has_channel<A> && !T_SrcColor::template has_channel<A>)
+        {
+            return [&]<typename T_Value, auto... t_channels>(Color<T_Value, t_channels...>)
+            {
+                return T_DstColor{
+                    [&](){
+                        if constexpr (ChannelOfType<A, decltype(t_channels)>)
+                        {
+                            return utils::bits<t_channels.size>;
+                        }
+                        else
+                        {
+                            return utils::resizeBits<
+                                T_DstColor::template channel<decltype(t_channels)>.size,
+                                T_SrcColor::template channel<L>.size
+                            >(static_cast<T_DstColor::Value>(p_src.template get<L>()));
+                        }
+                    }()
+                    ...,
+                };
+            }(T_DstColor{});
+        }
+        else
+        {
+            return [&]<typename T_Value, auto... t_channels>(Color<T_Value, t_channels...>)
+            {
+                return T_DstColor{
+                    [&](){
+                        if constexpr (ChannelOfType<A, decltype(t_channels)>)
+                        {
+                            return utils::resizeBits<
+                                T_DstColor::template channel<decltype(t_channels)>.size,
+                                T_SrcColor::template channel<decltype(t_channels)>.size
+                            >(static_cast<T_DstColor::Value>(p_src.template get<decltype(t_channels)>()));
+                        }
+                        else
+                        {
+                            return utils::resizeBits<
+                                T_DstColor::template channel<decltype(t_channels)>.size,
+                                T_SrcColor::template channel<L>.size
+                            >(static_cast<T_DstColor::Value>(p_src.template get<L>()));
+                        }
+                    }()
+                    ...,
+                };
+            }(T_DstColor{});
+        }
+
+    }
+
+    // L to RGB
+    static_assert(convert<R5G6B5, GS4>({0}).get<R>() == 0);
+    static_assert(convert<R5G6B5, GS4>({0}).get<G>() == 0);
+    static_assert(convert<R5G6B5, GS4>({0}).get<B>() == 0);
+
+    static_assert(convert<R5G6B5, GS4>({2}).get<R>() == 4);
+    static_assert(convert<R5G6B5, GS4>({2}).get<G>() == 8);
+    static_assert(convert<R5G6B5, GS4>({2}).get<B>() == 4);
+
+    static_assert(convert<R5G6B5, GS4>({4}).get<R>() == 8);
+    static_assert(convert<R5G6B5, GS4>({4}).get<G>() == 17);
+    static_assert(convert<R5G6B5, GS4>({4}).get<B>() == 8);
+
+    static_assert(convert<R5G6B5, GS4>({6}).get<R>() == 12);
+    static_assert(convert<R5G6B5, GS4>({6}).get<G>() == 25);
+    static_assert(convert<R5G6B5, GS4>({6}).get<B>() == 12);
+
+    static_assert(convert<R5G6B5, GS4>({8}).get<R>() == 17);
+    static_assert(convert<R5G6B5, GS4>({8}).get<G>() == 34);
+    static_assert(convert<R5G6B5, GS4>({8}).get<B>() == 17);
+
+    static_assert(convert<R5G6B5, GS4>({10}).get<R>() == 21);
+    static_assert(convert<R5G6B5, GS4>({10}).get<G>() == 42);
+    static_assert(convert<R5G6B5, GS4>({10}).get<B>() == 21);
+
+    static_assert(convert<R5G6B5, GS4>({12}).get<R>() == 25);
+    static_assert(convert<R5G6B5, GS4>({12}).get<G>() == 51);
+    static_assert(convert<R5G6B5, GS4>({12}).get<B>() == 25);
+
+    static_assert(convert<R5G6B5, GS4>({14}).get<R>() == 29);
+    static_assert(convert<R5G6B5, GS4>({14}).get<G>() == 59);
+    static_assert(convert<R5G6B5, GS4>({14}).get<B>() == 29);
+
+    static_assert(convert<R5G6B5, GS4>({15}).get<R>() == 31);
+    static_assert(convert<R5G6B5, GS4>({15}).get<G>() == 63);
+    static_assert(convert<R5G6B5, GS4>({15}).get<B>() == 31);
+
     /// convert from RGB(A) to L(A).
     /// follows ITU Rec. 601.
     /// https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.601-7-201103-I!!PDF-E.pdf : Section 2.5.1.
     /// on rpi pico uses interp0 lane0 for blending color channels.
-    /// TODO: only use interp with pico SDK.
     template<ColorType T_DstColor, ColorType T_SrcColor>
     requires(
         num_color_channels<T_DstColor> == 1 &&
@@ -140,13 +241,16 @@ namespace picon::graphics::color
         constexpr std::uint8_t r_coeff = utils::bits<8> * 299 / 1000;
         constexpr std::uint8_t g_coeff = utils::bits<8> * 587 / 1000;
         constexpr std::uint8_t b_coeff = utils::bits<8> * 114 / 1000;
-        // constexpr std::uint8_t r_coeff = utils::bits<8> * 300 / 1000;
-        // constexpr std::uint8_t g_coeff = utils::bits<8> * 590 / 1000;
-        // constexpr std::uint8_t b_coeff = utils::bits<8> * 110 / 1000;
 
         typename T_SrcColor::Value l_value{};
-        if consteval
-        // if (true)
+
+        #ifdef PICON_PLATFORM_PICO
+            constexpr auto has_interp = true;
+        #else
+            constexpr auto has_interp = false;
+        #endif
+
+        if constexpr (std::is_constant_evaluated() || !has_interp)
         {
             const auto r = utils::resizeBits<16, T_SrcColor::template channel<R>.size>(p_src.template get<R>());
             const auto g = utils::resizeBits<16, T_SrcColor::template channel<G>.size>(p_src.template get<G>());
@@ -160,35 +264,37 @@ namespace picon::graphics::color
         }
         else
         {
-            auto config = interp_default_config();
-            interp_set_config(interp0, 1, &config);
-            interp_config_set_blend(&config, true);
-            interp_set_config(interp0, 0, &config);
+            #if defined(PICON_PLATFORM_PICO)
+                auto config = interp_default_config();
+                interp_set_config(interp0, 1, &config);
+                interp_config_set_blend(&config, true);
+                interp_set_config(interp0, 0, &config);
 
-            if constexpr (
-                p_src.template channel<R>.size <= 16 &&
-                p_src.template channel<G>.size <= 16 &&
-                p_src.template channel<B>.size <= 16
-            ){
-                interp0->base[0] = 0;
+                if constexpr (
+                    p_src.template channel<R>.size <= 16 &&
+                    p_src.template channel<G>.size <= 16 &&
+                    p_src.template channel<B>.size <= 16
+                ){
+                    interp0->base[0] = 0;
 
-                interp0->accum[1] = r_coeff;
-                interp0->base[1] =
-                    utils::resizeBits<16, p_src.template channel<R>.size>(p_src.template get<R>());
-                l_value = interp0->peek[1];
+                    interp0->accum[1] = r_coeff;
+                    interp0->base[1] =
+                        utils::resizeBits<16, p_src.template channel<R>.size>(p_src.template get<R>());
+                    l_value = interp0->peek[1];
 
-                interp0->accum[1] = g_coeff;
-                interp0->base[1] =
-                    utils::resizeBits<16, p_src.template channel<G>.size>(p_src.template get<G>());
-                l_value += interp0->peek[1];
+                    interp0->accum[1] = g_coeff;
+                    interp0->base[1] =
+                        utils::resizeBits<16, p_src.template channel<G>.size>(p_src.template get<G>());
+                    l_value += interp0->peek[1];
 
-                interp0->accum[1] = b_coeff;
-                interp0->base[1] =
-                    utils::resizeBits<16, p_src.template channel<B>.size>(p_src.template get<B>());
-                l_value += interp0->peek[1];
+                    interp0->accum[1] = b_coeff;
+                    interp0->base[1] =
+                        utils::resizeBits<16, p_src.template channel<B>.size>(p_src.template get<B>());
+                    l_value += interp0->peek[1];
 
-                l_value = utils::resizeBits<T_DstColor::template channel<L>.size, 16>(l_value);
-            }
+                    l_value = utils::resizeBits<T_DstColor::template channel<L>.size, 16>(l_value);
+                }
+            #endif
         }
 
         if constexpr (T_DstColor::template has_channel<A> && !T_SrcColor::template has_channel<A>)
@@ -199,7 +305,7 @@ namespace picon::graphics::color
                     [&](){
                         if constexpr (ChannelOfType<A, decltype(t_channels)>)
                         {
-                            return utils::bits<t_channels.size>;
+                            return static_cast<T_DstColor::Value>(utils::bits<t_channels.size>);
                         }
                         else if constexpr (ChannelOfType<L, decltype(t_channels)>)
                         {
@@ -221,7 +327,7 @@ namespace picon::graphics::color
                             return utils::resizeBits<
                                 T_DstColor::template channel<decltype(t_channels)>.size,
                                 T_SrcColor::template channel<decltype(t_channels)>.size
-                            >(p_src.template get<decltype(t_channels)>());
+                            >(static_cast<T_DstColor::Value>(p_src.template get<decltype(t_channels)>()));
                         }
                         else if constexpr (ChannelOfType<L, decltype(t_channels)>)
                         {
@@ -298,4 +404,4 @@ namespace picon::graphics::color
     static_assert(convert<GS4A1, R5G5B5A1>({24, 24, 24, 0}).get<A>() == 0);
     static_assert(convert<GS4A1, R5G5B5A1>({28, 28, 28, 1}).get<A>() == 1);
     static_assert(convert<GS4A1, R5G5B5A1>({31, 31, 31, 0}).get<A>() == 0);
-}
+} // namespace picon::graphics::color
