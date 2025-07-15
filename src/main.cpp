@@ -1,3 +1,5 @@
+#include "config/config.hpp"
+
 #include "assets/images.hpp"
 
 #include "graphics/color.hpp"
@@ -6,75 +8,25 @@
 #include "time/time.hpp"
 
 #include <cmath>
+#include <cstddef>
 #include <ratio>
 
 
+#if defined(PICON_PLATFORM_PICO)
+#include "drivers/sh1122.hpp"
+#include "pal/pico/pico.hpp"
+#include <pico/stdio.h>
+#endif // defined(PICON_PLATFORM_PICO)
+
 #if defined(PICON_PLATFORM_LINUX)
 #include "drivers/sdl.hpp"
-
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_timer.h>
-
-
-#elif defined(PICON_PLATFORM_PICO)
-#include "drivers/sh1122.hpp"
-
-#include <pico/stdio.h>
-#include <pico/rand.h>
-
-#include <malloc.h>
-
-#endif
-
+#endif // defined(PICON_PLATFORM_LINUX)
 
 using namespace picon;
 
 #if defined(PICON_PLATFORM_PICO)
-extern char __flash_binary_start;
-extern char __flash_binary_end;
-uintptr_t flash_binary_start = (uintptr_t) &__flash_binary_start;
-uintptr_t flash_binary_end = (uintptr_t) &__flash_binary_end;
-
-uint32_t getTotalHeap(void)
-{
-   extern char __StackLimit, __bss_end__;
-   return &__StackLimit  - &__bss_end__;
-}
-
-uint32_t getFreeHeap(void)
-{
-   struct mallinfo m = mallinfo();
-   return getTotalHeap() - m.uordblks;
-}
-
-/// a workaround for missing _getentropy in pico-sdk / newlib.
-/// silences linker errors, but probably overkill and/or entirely wrong.
-extern "C" int _getentropy(void* buffer, std::size_t length)
-{
-    if (length > 256)
-    {
-        errno = EINVAL;
-        return -1;
-    }
-
-    std::size_t i = 0;
-
-    // set whole words at a time
-    for (; i < length; i += 4)
-    {
-        std::bit_cast<std::uint32_t*>(buffer)[i] = get_rand_32();
-    }
-    
-    // last word didn't get completely set, set it
-    if (i > length)
-    {
-        std::bit_cast<std::uint32_t*>(buffer)[length - 4] = get_rand_32();
-    }
-
-    return 0;
-}
-
-
 drivers::SH1122Driver<
     256,  // t_width
     64,   // t_height
@@ -83,27 +35,29 @@ drivers::SH1122Driver<
     16,   // t_dc
     17,   // t_cs
     20    // t_rst
-> display{pio0};
-#elif defined(PICON_PLATFORM_LINUX)
+> display{.pio = pio0};
+#endif // defined(PICON_PLATFORM_PICO)
 
+#if defined(PICON_PLATFORM_LINUX)
 drivers::SdlDriver<
-    graphics::color::R5G6B5,    // T_Color
-    // graphics::color::GS4,    // T_Color
+    // graphics::color::GS4,       // T_Color
+    // graphics::color::R8G8B8,    // T_Color
+    graphics::color::R4G4B4A4,  // T_Color
     256,                        // t_width
     64                          // t_height
-    // 320,                        // t_width
-    // 240                          // t_height
 > display{.integer_scaling = true};
-
-#endif
+#endif // defined(PICON_PLATFORM_LINUX)
 
 constexpr auto bg = assets::images::bg;
 constexpr auto heart = assets::images::heart;
 
+constexpr std::size_t fb_width = decltype(display)::width;
+constexpr std::size_t fb_height = decltype(display)::height;
+
 std::float_t bg_offset_x{ 0 };
 std::float_t bg_offset_y{ 0 };
-constexpr std::float_t bg_speed_x{(256.0) / std::micro::den / 8};
-constexpr std::float_t bg_speed_y{(64.0) / std::micro::den / 8};
+constexpr std::float_t bg_speed_x{1.0 * fb_width / std::micro::den / 8};
+constexpr std::float_t bg_speed_y{1.0 * fb_height / std::micro::den / 8};
 
 
 constexpr auto num_heart_cols = 16;
@@ -111,8 +65,8 @@ constexpr auto num_heart_rows = 16;
 
 std::float_t heart_offset_x{ 1.0 * heart.width * -num_heart_cols };
 std::float_t heart_offset_y{ 1.0 * heart.height * -num_heart_rows };
-constexpr std::float_t heart_speed_x{(256.0 + heart.width * num_heart_cols) / std::micro::den / 2};
-constexpr std::float_t heart_speed_y{(64.0 + heart.height * num_heart_rows) / std::micro::den / 8};
+constexpr std::float_t heart_speed_x{(1.0 * fb_width + heart.width * num_heart_cols) / std::micro::den / 2};
+constexpr std::float_t heart_speed_y{(1.0 * fb_height + heart.height * num_heart_rows) / std::micro::den / 8};
 
 // constexpr auto num_heart_cols = 1;
 // constexpr auto num_heart_rows = 480;
@@ -128,16 +82,17 @@ void displayTick(std::uint64_t p_delta)
 {
     auto fb = display.getBackBuffer();
 
-    graphics::fn::fill(fb, graphics::color::R5G6B5{0, 0, 0});
+    // graphics::fn::fill(fb, graphics::color::R5G6B5{0, 0, 0});
+    graphics::fn::fill(fb, graphics::color::R4G4B4A4{0, 0, 0, 0});
 
     bg_offset_x += p_delta * bg_speed_x;
     bg_offset_y += p_delta * bg_speed_y;
-    if (bg_offset_x > fb.width)
+    if (bg_offset_x > fb_width)
     {
         bg_offset_x = 0;
     }
 
-    if (bg_offset_y > fb.height)
+    if (bg_offset_y > fb_height)
     {
         bg_offset_y = 0;
     }
@@ -163,19 +118,19 @@ void displayTick(std::uint64_t p_delta)
 
     heart_offset_x += p_delta * heart_speed_x;
     heart_offset_y += p_delta * heart_speed_y;
-    if (heart_offset_x > fb.width)
+    if (heart_offset_x > fb_width)
     {
         heart_offset_x = 1.0 * heart.width * -num_heart_cols;
         // heart_offset_x = -1.0 * blit_image1.width;
     }
 
-    if (heart_offset_y > fb.height)
+    if (heart_offset_y > fb_height)
     {
         heart_offset_y = 1.0 * heart.height * -num_heart_rows;
         // heart_offset_y = -1.0 * blit_image1.height;
     }
 
-    for (auto n = 0; n < 2; ++n)
+    for (auto n = 0; n < 1; ++n)
     {
         for (auto i = 0; i < num_heart_cols; ++i)
         {

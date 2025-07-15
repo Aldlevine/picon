@@ -31,8 +31,8 @@ add_custom_command(
     -i ${CMAKE_CURRENT_LIST_DIR}/images
     -o ${CMAKE_CURRENT_BINARY_DIR}/includes/assets
     # -f GS4
-    -f GS4A1
-    # -f R5G5B5A1
+    # -f GS4A1
+    -f R5G5B5A1
     # -f R5G6B5
   DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/../tools/image_importer/__main__.py

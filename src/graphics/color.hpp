@@ -4,8 +4,10 @@
 #include "utils/traits.hpp"
 
 #include <climits>
+#include <concepts>
 #include <cstdint>
 #include <tuple>
+#include <type_traits>
 
 namespace picon::graphics::color
 {
@@ -106,9 +108,10 @@ namespace picon::graphics::color
         };
 
         /// default construct to 0.
-        Color() = default;
+        constexpr Color() = default;
 
-        operator T_Value() const { return value; }
+        /// implicit convert from Color to T_Value
+        constexpr operator T_Value() const { return value; }
         
         /// construct with all components.
         template <std::convertible_to<Value>... T_Args>
@@ -119,6 +122,14 @@ namespace picon::graphics::color
                 [&]<std::size_t... t_i>(std::index_sequence<t_i...>) {
                     return (utils::setBits<channel_at<t_i>.offset, channel_at<t_i>.size>(p_args) | ... | 0);
                 }(std::index_sequence_for<T_Args...>{});
+        }
+        
+        /// factory construct a color from a raw value.
+        constexpr static Color fromValue(T_Value p_value)
+        {
+            Color result{};
+            result.value = p_value;
+            return result;
         }
 
         /// get value of given channel.
@@ -138,11 +149,17 @@ namespace picon::graphics::color
         { []<typename T_Value, auto... t_channels>(Color<T_Value, t_channels...>){}(t) };
     };
 
+    template <typename T_Color, typename T_Type>
+    concept ColorOfType = ColorType<T_Type> && std::same_as<std::remove_cvref_t<T_Color>, std::remove_cvref_t<T_Type>>;
+
     
     using GS4 = Color<std::uint8_t, L{4}>;
     using GS4A1 = Color<std::uint8_t, L{4}, A{1}>;
     using R5G6B5 = Color<std::uint16_t, R{5}, G{6}, B{5}>;
     using R5G5B5A1 = Color<std::uint16_t, R{5}, G{5}, B{5}, A{1}>;
+    using R4G4B4A4 = Color<std::uint16_t, R{4}, G{4}, B{4}, A{4}>;
+    using R8G8B8 = Color<std::uint32_t, R{8}, G{8}, B{8}>;
+    using R8G8B8A8 = Color<std::uint32_t, R{8}, G{8}, B{8}, A{8}>;
 
 
     static_assert(R5G5B5A1{1, 2, 3, 1}.get<R>() == 1);

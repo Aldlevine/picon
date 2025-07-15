@@ -27,10 +27,25 @@ namespace picon::drivers
     template <graphics::color::ColorType T_Color, std::size_t t_width, std::size_t t_height>
     struct SdlDriver
     {
-    public:
+        // static
         using FrameBufferData = graphics::ImageData<T_Color, t_width, t_height>;
         using FrameBuffer = graphics::Image<T_Color>;
 
+        constexpr static std::size_t width = t_width;
+        constexpr static std::size_t height = t_height;
+
+        static constexpr SDL_PixelFormat sdl_pixel_format = [](){
+            if constexpr (std::same_as<T_Color, graphics::color::GS4>) { return SDL_PIXELFORMAT_INDEX8; }
+            else if constexpr (std::same_as<T_Color, graphics::color::GS4A1>) { return SDL_PIXELFORMAT_INDEX8; }
+            else if constexpr (std::same_as<T_Color, graphics::color::R5G6B5>) { return SDL_PIXELFORMAT_RGB565; }
+            else if constexpr (std::same_as<T_Color, graphics::color::R5G5B5A1>) { return SDL_PIXELFORMAT_RGBA5551; }
+            else if constexpr (std::same_as<T_Color, graphics::color::R4G4B4A4>) { return SDL_PIXELFORMAT_RGBA4444; }
+            else if constexpr (std::same_as<T_Color, graphics::color::R8G8B8>) { return SDL_PIXELFORMAT_XRGB8888; }
+            else if constexpr (std::same_as<T_Color, graphics::color::R8G8B8A8>) { return SDL_PIXELFORMAT_RGBA8888; }
+            else { static_assert(false, "unsupported pixel format"); }
+        }();
+
+        // instance
         bool integer_scaling{false};
         
         std::array<FrameBufferData, 2> frame_buffer_data{};
@@ -39,21 +54,12 @@ namespace picon::drivers
 
         SDL_Window* window{};
         SDL_Renderer* renderer{};
-        bool is_software_renderer{};
+        bool use_frame_buffer_textures{true};
         std::array<SDL_Surface*, 2> frame_buffer_surfaces{};
         std::array<SDL_Texture*, 2> frame_buffer_textures{};
 
         SDL_Palette* sdl_palette{};
 
-        static constexpr SDL_PixelFormat sdl_pixel_format = [](){
-            if constexpr (std::same_as<T_Color, graphics::color::GS4>) { return SDL_PIXELFORMAT_INDEX8; }
-            else if constexpr (std::same_as<T_Color, graphics::color::GS4A1>) { return SDL_PIXELFORMAT_INDEX8; }
-            else if constexpr (std::same_as<T_Color, graphics::color::R5G6B5>) { return SDL_PIXELFORMAT_RGB565; }
-            else if constexpr (std::same_as<T_Color, graphics::color::R5G5B5A1>) { return SDL_PIXELFORMAT_RGBA5551; }
-            else { static_assert(false, "unsupported pixel format"); }
-        }();
-
-    public:
         void init()
         {
             SDL_Init(SDL_INIT_VIDEO);
@@ -63,7 +69,7 @@ namespace picon::drivers
                 SDL_Log("%d. %s", i + 1, SDL_GetRenderDriver(i));
             }
 
-            window = SDL_CreateWindow("", t_width * 2, t_height * 2, SDL_WINDOW_RESIZABLE);
+            window = SDL_CreateWindow("picon", t_width * 2, t_height * 2, SDL_WINDOW_RESIZABLE);
             if (window == nullptr)
             {
                 SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Could not create window: %s\n", SDL_GetError());
@@ -84,16 +90,20 @@ namespace picon::drivers
                 abort();
             }
 
+            SDL_SetRenderVSync(renderer, 1);
+
             if (std::string{SDL_GetRendererName(renderer)} == "software")
             {
-                is_software_renderer = true;
+                use_frame_buffer_textures = false;
             }
 
 
             if constexpr (sdl_pixel_format == SDL_PIXELFORMAT_INDEX8)
             {
+                use_frame_buffer_textures = false;
+
                 constexpr auto num_bits = T_Color::template channel<graphics::color::L>.size;
-                constexpr auto num_colors = utils::bits<num_bits>;
+                constexpr auto num_colors = utils::bits<num_bits> + 1;
                 sdl_palette = SDL_CreatePalette(num_colors);
                 for (std::size_t i = 0; i < num_colors; ++i)
                 {
@@ -117,7 +127,7 @@ namespace picon::drivers
                     SDL_SetSurfacePalette(frame_buffer_surfaces[i], sdl_palette);
                 }
 
-                if (!is_software_renderer)
+                if (use_frame_buffer_textures)
                 {
                     frame_buffer_textures[i] =
                         SDL_CreateTexture(
@@ -126,6 +136,12 @@ namespace picon::drivers
                             SDL_TEXTUREACCESS_STREAMING,
                             t_width,
                             t_height);
+
+                    if (frame_buffer_textures[i] == nullptr)
+                    {
+                        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Could not create texture: %s\n", SDL_GetError());
+                        abort();
+                    }
                         
                     SDL_SetTextureScaleMode(frame_buffer_textures[i], SDL_SCALEMODE_NEAREST);
                 }
@@ -137,7 +153,7 @@ namespace picon::drivers
         {
             for (std::size_t i = 0; i < frame_buffers.size(); ++i)
             {
-                if (!is_software_renderer)
+                if (!use_frame_buffer_textures)
                 {
                     SDL_DestroyTexture(frame_buffer_textures[i]);
                 }
@@ -206,7 +222,7 @@ namespace picon::drivers
                 dst_rect.w = target_width;
             }
 
-            if (is_software_renderer)
+            if (!use_frame_buffer_textures)
             {
                 const auto back_buffer_surface = frame_buffer_surfaces[(front_buffer_idx + 1) % frame_buffer_surfaces.size()];
                 

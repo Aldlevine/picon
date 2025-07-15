@@ -2,23 +2,23 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "type": "cmake",
             "label": "CMake: build",
+            "type": "cmake",
             "command": "build",
             "targets": [ "picon" ],
             "group": "build",
             "problemMatcher": [ "$gcc", "$armcc5" ],
         },
         {
-            "type": "cmake",
             "label": "CMake: clean rebuild",
+            "type": "cmake",
             "command": "cleanRebuild",
             "targets": [ "picon" ],
             "group": "build",
             "problemMatcher": [ "$gcc", "$armcc5" ],
         },
         {
-            "label": "Flash Binary",
+            "label": "Pico: Flash Binary",
             "group": "build",
             "command": "openocd",
             "args": [

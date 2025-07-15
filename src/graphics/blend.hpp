@@ -17,7 +17,7 @@ namespace picon::graphics::color::blend
     constexpr struct None
     {
         template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat>
-        constexpr static void operator()(T_DstFormat& r_dst, T_SrcFormat p_src)
+        static constexpr void operator()(T_DstFormat& r_dst, T_SrcFormat p_src)
         {
             r_dst = convert<T_DstFormat, T_SrcFormat>(p_src);                
         }
@@ -28,14 +28,14 @@ namespace picon::graphics::color::blend
     {
         template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat>
         requires(!T_SrcFormat::template has_channel<A>)
-        constexpr static void operator()(T_DstFormat& r_dst, T_SrcFormat p_src)
+        static constexpr void operator()(T_DstFormat& r_dst, T_SrcFormat p_src)
         {
             None::operator()(r_dst, p_src);
         }
 
         template <color::ColorType T_DstFormat, color::ColorType T_SrcFormat>
         requires(T_SrcFormat::template channel<A>.size == 1)
-        constexpr static void operator()(T_DstFormat& r_dst, T_SrcFormat p_src)
+        static constexpr void operator()(T_DstFormat& r_dst, T_SrcFormat p_src)
         {
             if (p_src.template get<A>() > 0) { r_dst = convert<T_DstFormat, T_SrcFormat>(p_src); }
         }

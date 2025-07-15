@@ -72,7 +72,19 @@ namespace picon::utils
     template <std::size_t t_dst_bits, std::size_t t_src_bits>
     constexpr bool resize_bits_use_lut{true};
 
-    /// resizes t_src_bits to fill t_dst_bits.
+    /// lookup table for `resizeBits`
+    /// @tparam T_Value
+    /// @tparam t_dst_bits
+    /// @tparam t_src_bits
+    template <typename T_Value, std::size_t t_dst_bits, std::size_t t_src_bits>
+    constexpr auto resize_bits_lut = []<std::size_t... t_i>(std::index_sequence<t_i...>)
+    {
+        return std::array<T_Value, bits<t_src_bits> + 1>{
+            repeatBits<t_dst_bits, t_src_bits>(t_i)...
+        };
+    }(std::make_index_sequence<bits<t_src_bits> + 1>());
+
+    /// resize t_src_bits to fill t_dst_bits.
     /// reduction truncates, expansion evenly distributes and correctly saturates.
     /// @tparam t_dst_bits
     /// @tparam t_src_bits
@@ -91,13 +103,7 @@ namespace picon::utils
         {
             if constexpr (resize_bits_use_lut<t_dst_bits, t_src_bits>)
             {
-                static constexpr auto lut{[]<std::size_t... t_i>(std::index_sequence<t_i...>){
-                    return std::array {
-                        repeatBits<t_dst_bits, t_src_bits>(static_cast<decltype(p_n)>(t_i))...
-                    };
-                }(std::make_index_sequence<bits<t_src_bits> + 1>())};
-
-                return lut[p_n];
+                return resize_bits_lut<decltype(p_n), t_dst_bits, t_src_bits>[p_n];
             }
             else
             {

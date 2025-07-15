@@ -58,22 +58,20 @@ namespace picon::drivers
         std::uint8_t t_dc,
         std::uint8_t t_cs,
         std::uint8_t t_rst>
-    class SH1122Driver
+    struct SH1122Driver
     {
-    private:
-        static constexpr auto width = t_width;
-        static constexpr auto height = t_height;
         static constexpr auto sck = t_sck;
         static constexpr auto mosi = t_mosi;
         static constexpr auto dc = t_dc;
         static constexpr auto cs = t_cs;
         static constexpr auto rst = t_rst;
 
-    public:
+        static constexpr auto width = t_width;
+        static constexpr auto height = t_height;
+
         using FrameBufferData = graphics::ImageData<graphics::color::GS4, width, height>;
         using FrameBuffer = graphics::Image<graphics::color::GS4>;
 
-    private:
         std::array<FrameBufferData, 2> frame_buffer_data{};
         std::array<FrameBuffer, 2> frame_buffers{
             frame_buffer_data[0],
@@ -93,8 +91,7 @@ namespace picon::drivers
         uint pio_data_start{};
         uint pio_data_end{};
 
-    public:
-        SH1122Driver(PIO p_pio): pio{p_pio} {}
+        // SH1122Driver(PIO p_pio): pio{p_pio} {}
 
         void init()
         {
